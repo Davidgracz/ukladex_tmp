@@ -82,7 +82,8 @@ szerokość wycinki ≥ 2 × odstęp znaczników od użytków (i tylko dla spadu
 | Brutto (B) | **nowe** — długości LP i GD, grubość, strony wszystkie/nieparzyste/parzyste, „tylko na pierwszym arkuszu”; skrót **B**; bez „zaznaczaj narożniki (kreska 2 mm)” |
 | Pasery (P) | **nowe** — własne wzory: wariant 1 (okrąg z krzyżem) i 2 (dwa okręgi z krzyżem); średnica, grubość, liczba na dłuższym/krótszym boku, odsunięcie H automatyczne lub własne, narożne lub tylko wzdłuż boków, w narożnikach lub przy narożnikach; kolor 100 % CMYK; skrót **P**; bez wariantu 3 (wzór zewnętrznej firmy) i definicji koloru |
 | Opis impozycji (O) | **nowe** — nazwa pliku wynikowego, „Arkusz N • Strona M” (słowa do zmiany, numeracja arabska/rzymska), pole zadruku, netto/brutto/spad, data i godzina, tekst dodatkowy; 10/12/14 pt, Arial/Courier; krawędź górna i/lub lewa; gdy się nie mieści — uwaga w preflight i na pasku stanu (jak komunikat oryginału); skrót **O**; bez opisu na wycinkach i oznaczeń kolorów |
-| Pozostałe (S, K, F, U, C, G, R) | brak |
+| Pasek kontroli koloru (K) | **nowe** — 12 kostek K1–K12 (C/M/Y/K %, puste = brak; co najmniej jedna z kolorem), szerokość i wysokość kostki, ilość stref, odsunięcie, góra / dół / wycinka pozioma, pełna długość pola zadruku albo minus X, wyśrodkowany albo od lewej, pasek z pliku PDF; uwaga, gdy się nie mieści; opis arkusza przesuwa się nad pasek; skrót **K**; bez zapisu definicji do pliku `*.impc` (format oryginału nieznany — kolory zapisują się w projekcie) i bez kostek dolnych z generatora pasków |
+| Pozostałe (S, F, U, C, G, R) | brak |
 
 Kliknięcie przycisku znacznika przełącza go (jak dotąd w Studio); **prawy przycisk otwiera parametry** — w oryginale
 role przycisków są odwrotne (klik = definicje, prawy = włącz/wyłącz). Parametry zapisują się w projekcie `.psimp`
@@ -146,6 +147,8 @@ Wariant jak w oryginale (bez zmiany skali grafiki): „Dodaj spady” z odległo
 | H-29 | Znaczniki brutto na przedłużeniu krawędzi brutto, od narożnika na zewnątrz; części wchodzące na brutto innego użytku pomijane; „strony” = numer strony pliku wynikowego. |
 | H-30 | Pasery: środek w odległości H + promień od obrysu brutto całej siatki arkusza (także pustych pól); H automatyczne = odstęp + długość linii cięcia + 1 mm; „X na boku” = liczba paserów równomiernie wzdłuż boku; paser na brutto użytku albo poza arkuszem pomijany; kolor 100 % C, M, Y, K. Nie przesuwa się z kalibracją verso. |
 | H-31 | Opis: jedna linia nad siatką (krawędź górna) i/lub obrócona przy lewej krawędzi, czytana od dołu; stopień pisma maleje do 6 pt, potem opis jest pomijany z uwagą; numeracja rzymska dotyczy strony arkusza. |
+| H-32 | Pasek kontroli: kostki z kolorem tworzą sekwencję powtarzaną na całej długości (tyle całych kostek, ile się mieści); „ilość stref” > 0 = tyle powtórzeń sekwencji; domyślne kolory K1–K12 nasze (C, M, Y, K, CM, CY, MY, CMY, 50 % C/M/Y/K). Pasek z PDF — jedna kopia w naturalnym rozmiarze. |
+| H-33 | Pasek u góry nad znacznikami cięcia, u dołu pod nimi (odsunięcie od nich), na wycince poziomej w jej osi (gdy wycinka ≥ kostka + 2 × odsunięcie); długość liczona od pola zadruku (szerokość arkusza − 2 × margines X); brak miejsca = uwaga, pasek nie jest rysowany. |
 | H-28 | „Wypełnij ze spadem”: skala = max(brutto/grafika) w obu osiach; spad zawsze z grafiki (ewentualny spad w źródle poza TrimBox jest pomijany); nadmiar przycinany do komórki brutto. |
 | — | „Usuń zaznaczone wiersze” w Studio = rola Pomiń (strona zostaje w pliku i może wrócić). |
 | — | „Wykonaj tylko aktywny arkusz” w trybie dwustronnym obejmuje recto i verso tego arkusza. |

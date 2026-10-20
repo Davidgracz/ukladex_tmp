@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Colour control strip (K) as in the final Imp4: 12 cubes K1–K12 (CMYK %, at least one coloured), cube size, zones,
+  offset, top / bottom / horizontal gutter, full print-area length or minus X, centred or from the left, or a strip
+  taken from a PDF file. Drawn in DeviceCMYK; a note when it does not fit; the slug moves above the strip.
+  Parameters dialog with a 12-colour editor and swatches. Optional `.psimp` fields. Tests: `tests/test_color_strip.py`.
+
 - Marks from the final Imp4 (UI texts read with REA): gross-size marks (B: LP/GD length, width, all/odd/even pages,
   first sheet only), registration marks (P: own designs 1/2, diameter, count per long/short side, automatic or own
   offset, corner/edge placement, 100 % CMYK) and imposition slug (O: output file name, "Arkusz N • Strona M" with
