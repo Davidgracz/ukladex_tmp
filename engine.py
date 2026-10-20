@@ -104,6 +104,13 @@ class Settings:
     gutter_mark_pt: float = 0.25
     trim_crop: bool = False       # dodatkowe docięcie TrimBox („crop”)
     trim_crop_pt: float = 0.5     # pt: z lewej na stronach parzystych, z prawej na nieparzystych
+    # Skalowanie z docinaniem (whitecrop.py): białe marginesy źródła nie są częścią grafiki.
+    white_trim: bool = False      # przytnij białe marginesy wokół grafiki źródła przed skalowaniem
+    white_level: int = 250        # próg bieli 1–255 (piksel jaśniejszy = biały)
+
+
+FILL_GROSS = 'Wypełnij ze spadem'  # grafika pokrywa netto + spad; spad powstaje z grafiki, nadmiar jest docinany
+SCALE_MODES = ('Bez skalowania', 'Kadruj 1:1', 'Dopasuj', 'Wypełnij', FILL_GROSS)
 
 
 @dataclass
@@ -211,8 +218,13 @@ def validate(settings: Settings):
             raise ValueError('Kalibracja rewersu musi być ustawiona co 0,1 mm.')
         if abs(value) > 20.0:
             raise ValueError('Kalibracja rewersu może wynosić maksymalnie ±20 mm.')
-    if settings.scale_mode not in ('Bez skalowania', 'Kadruj 1:1', 'Dopasuj', 'Wypełnij'):
+    if settings.scale_mode not in SCALE_MODES:
         raise ValueError('Nieznany sposób skalowania PDF')
+    if settings.white_trim and settings.scale_mode in ('Bez skalowania', 'Kadruj 1:1'):
+        raise ValueError('Przycinanie białych marginesów działa tylko ze skalowaniem: '
+                         'Dopasuj, Wypełnij albo Wypełnij ze spadem.')
+    if type(settings.white_level) is not int or not 1 <= settings.white_level <= 255:
+        raise ValueError('Próg bieli musi być liczbą całkowitą 1–255.')
     for key, low, high, label in (('mark_offset', 0, 50, 'Odstęp znaczników od użytków [mm]'),
                                   ('mark_length', 0.1, 50, 'Długość znacznika cięcia [mm]'),
                                   ('mark_width_pt', 0.05, 5, 'Grubość znacznika cięcia [pt]'),
@@ -800,22 +812,52 @@ def overlapping_uses(side: SheetSide, s: Settings) -> list[tuple[int, int]]:
 def _draw_marks(page: fitz.Page, slot: Slot, s: Settings):
     """Create slim vector trim marks separated from bleed when space permits."""
     x, y, w, h = slot.x, slot.y, slot.w, slot.h
-    # Do not print black into bleed. Each mark begins 0.8mm after bleed.
-    offset = bleed_for(s) + 0.8
-    length = 3.0
-    rect = ((0, 0, s.sheet_w, s.sheet_h))
+    # Do not print black into bleed. Each mark begins `mark_offset` (default 0.8 mm) after bleed.
+    offset = bleed_for(s) + s.mark_offset
+    length = s.mark_length
+    width = s.mark_width_pt
     for cx in (x, x+w):
         direction = -1 if cx == x else 1
         a, b = cx+direction*offset, cx+direction*(offset+length)
         if min(a, b) >= 0 and max(a, b) <= s.sheet_w:
             for yy in (y, y+h):
-                page.draw_line((pt(a), pt(yy)), (pt(b), pt(yy)), color=(0,0,0), width=0.25)
+                page.draw_line((pt(a), pt(yy)), (pt(b), pt(yy)), color=(0,0,0), width=width)
     for cy in (y, y+h):
         direction = -1 if cy == y else 1
         a, b = cy+direction*offset, cy+direction*(offset+length)
         if min(a, b) >= 0 and max(a, b) <= s.sheet_h:
             for xx in (x, x+w):
-                page.draw_line((pt(xx), pt(a)), (pt(xx), pt(b)), color=(0,0,0), width=0.25)
+                page.draw_line((pt(xx), pt(a)), (pt(xx), pt(b)), color=(0,0,0), width=width)
+
+
+def gutter_mark_lines(s: Settings) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+    """Odcinki znaczników wycinki w mm ((x0, y0), (x1, y1)); pusta lista, gdy wycinki nie ma (H-23)."""
+    if not (s.gutter_on and s.gutter_marks) or s.mode == 'Broszura':
+        return []
+    g = geometry(s)
+    lines = []
+    if g.gutter_x is not None:
+        for a, b in marks_rules.gutter_mark_segments(g.gutter_x, s.margin_y, s.sheet_h - s.margin_y,
+                                                     s.gutter_mark_length):
+            lines.append(((g.gutter_x, a), (g.gutter_x, b)))
+    if g.gutter_y is not None:
+        for a, b in marks_rules.gutter_mark_segments(g.gutter_y, s.margin_x, s.sheet_w - s.margin_x,
+                                                     s.gutter_mark_length):
+            lines.append(((a, g.gutter_y), (b, g.gutter_y)))
+    return lines
+
+
+def gutter_notes(s: Settings) -> list[str]:
+    """Wyjaśnienie, dlaczego włączona wycinka nie została uwzględniona (zamiast cichego pominięcia)."""
+    if not s.gutter_on or s.mode == 'Broszura':
+        return ['Wycinka nie dotyczy trybu Broszura.'] if s.gutter_on and (s.gutter_v or s.gutter_h) else []
+    g = geometry(s)
+    notes = []
+    if s.gutter_v > 0 and g.gutter_x is None:
+        notes.append(f'Wycinka pionowa pominięta: liczba kolumn ({g.cols}) nie jest parzysta.')
+    if s.gutter_h > 0 and g.gutter_y is None:
+        notes.append(f'Wycinka pozioma pominięta: liczba wierszy ({g.rows}) nie jest parzysta.')
+    return notes
 
 
 def _rotate_point(x: float, y: float, width: float, height: float,
@@ -844,7 +886,7 @@ def scaling_layout(source_w: float, source_h: float, target_w: float,
         raise ValueError('Nieprawidłowy rozmiar strony do skalowania')
     if mode == 'Dopasuj':
         scale = min(target_w/source_w, target_h/source_h)
-    elif mode == 'Wypełnij':
+    elif mode in ('Wypełnij', FILL_GROSS):
         scale = max(target_w/source_w, target_h/source_h)
     elif mode in ('Bez skalowania', 'Kadruj 1:1'):
         scale = 1.0
@@ -942,6 +984,10 @@ def _place_pdf(target: fitz.Page, p: SourcePage, slot: Slot, s: Settings,
         cy = trim.y0 + pt(new_y)
         trim = fitz.Rect(cx-target_w/2, cy-target_h/2, cx+target_w/2, cy+target_h/2)
 
+    if s.white_trim:
+        # Białe marginesy wokół grafiki nie są częścią pracy: źródłem jest wykryty obszar treści.
+        import whitecrop
+        trim = whitecrop.content_rect(original, trim, s.white_level)
     bleedbox = fitz.Rect(original.bleedbox)
     limit = media
     if (s.scale_mode != 'Kadruj 1:1' and bleedbox.contains(trim)
@@ -951,17 +997,26 @@ def _place_pdf(target: fitz.Page, p: SourcePage, slot: Slot, s: Settings,
     final_width = trim.width if angle in (0, 180) else trim.height
     final_height = trim.height if angle in (0, 180) else trim.width
     dest_w, dest_h = pt(slot.w), pt(slot.h)
-    factor, dx, dy = scaling_layout(final_width, final_height, dest_w, dest_h,
-                                    ('Bez skalowania' if s.scale_mode == 'Kadruj 1:1' else s.scale_mode))
-    # For exact-size source PDFs tolerate printer/export rounding <=0.5mm
-    # without stretching artwork in opposite dimensions.
-    base_x = pt(slot.x) + dx
-    base_y = pt(slot.y) + dy
+    if s.scale_mode == FILL_GROSS:
+        # Grafika pokrywa cały użytek brutto (netto + spad): spad powstaje z samej grafiki,
+        # nadmiar jest docinany do komórki — bez białych krawędzi.
+        b = pt(bleed_for(s))
+        factor, dx, dy = scaling_layout(final_width, final_height, dest_w + 2*b, dest_h + 2*b, FILL_GROSS)
+        base_x = pt(slot.x) - b + dx
+        base_y = pt(slot.y) - b + dy
+        needed = 0.0
+    else:
+        factor, dx, dy = scaling_layout(final_width, final_height, dest_w, dest_h,
+                                        ('Bez skalowania' if s.scale_mode == 'Kadruj 1:1' else s.scale_mode))
+        # For exact-size source PDFs tolerate printer/export rounding <=0.5mm
+        # without stretching artwork in opposite dimensions.
+        base_x = pt(slot.x) + dx
+        base_y = pt(slot.y) + dy
 
-    # Required source bleed becomes larger when shrinking a source (e.g. A4
-    # -> A6 needs 4mm source bleed to supply 2mm at output). Missing areas
-    # stay white: the engine never invents an extended image.
-    needed = pt(bleed_for(s))/factor
+        # Required source bleed becomes larger when shrinking a source (e.g. A4
+        # -> A6 needs 4mm source bleed to supply 2mm at output). Missing areas
+        # stay white: the engine never invents an extended image.
+        needed = pt(bleed_for(s))/factor
     desired = fitz.Rect(trim.x0-needed, trim.y0-needed,
                         trim.x1+needed, trim.y1+needed)
 
@@ -982,6 +1037,17 @@ def _place_pdf(target: fitz.Page, p: SourcePage, slot: Slot, s: Settings,
                        trim.x0 + max(x for x, _ in orig_corners),
                        trim.y0 + max(y for _, y in orig_corners))
     visible = desired & limit & bounds
+    if s.trim_crop and s.trim_crop_pt > 0:
+        # Docięcie TrimBox: krawędź liczona w orientacji strony widocznej dla operatora (po /Rotate).
+        side_name = marks_rules.trim_crop_side(p.index + 1)
+        tw, th = trim.width, trim.height
+        aw, ah = (th, tw) if original_angle in (90, 270) else (tw, th)
+        big = 1e6
+        x0a, x1a = (s.trim_crop_pt, big) if side_name == 'left' else (-big, aw - s.trim_crop_pt)
+        kept = [_inverse_rotate_point(xa, ya, tw, th, original_angle)
+                for xa, ya in ((x0a, -big), (x1a, -big), (x0a, ah + big), (x1a, ah + big))]
+        visible = visible & fitz.Rect(trim.x0 + min(x for x, _ in kept), trim.y0 + min(y for _, y in kept),
+                                      trim.x0 + max(x for x, _ in kept), trim.y0 + max(y for _, y in kept))
     if visible.is_empty or visible.width <= 0 or visible.height <= 0:
         raise ValueError(f'{Path(p.path).name}: nieprawidłowy obszar po skalowaniu i kadrowaniu')
 
@@ -1018,6 +1084,8 @@ def render_side(side: SheetSide, sources: dict[str, fitz.Document], s: Settings,
             txt = f'{item.source.index+1}  ' if item.source else 'PUSTA  '
             target.insert_text((pt(item.slot.x+1), pt(item.slot.y+item.slot.h-1)),
                                txt, fontsize=6, color=(.3,.3,.3), overlay=True)
+    for (x0, y0), (x1, y1) in gutter_mark_lines(s):
+        target.draw_line((pt(x0), pt(y0)), (pt(x1), pt(y1)), color=(0, 0, 0), width=s.gutter_mark_pt)
     return out
 
 
