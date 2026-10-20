@@ -20,12 +20,48 @@ from duplex_test_sheet import create_duplex_test_pdf, correction_from_front_erro
 from economic_csv import write_economic_csv
 from crop_editor import CropEditor
 from ui_icons import draw as draw_icon
-from engine import RUN_MODES, RUN_ALL, gutter_notes, FILL_GROSS
+from engine import RUN_MODES, RUN_ALL, gutter_notes, slug_notes, FILL_GROSS
 
 # Parametry znaczników (okna „definicji” w Imp4) trzymane poza polami wstęgi.
 MARK_PARAMS = ('mark_offset', 'mark_length', 'mark_width_pt', 'gutter_v', 'gutter_h', 'gutter_marks',
-               'gutter_mark_length', 'gutter_mark_pt', 'trim_crop_pt')
+               'gutter_mark_length', 'gutter_mark_pt', 'trim_crop_pt',
+               'gross_mark_lp', 'gross_mark_gd', 'gross_mark_pt', 'gross_mark_pages', 'gross_first_sheet',
+               'reg_variant', 'reg_diameter', 'reg_pt', 'reg_long', 'reg_short', 'reg_offset',
+               'reg_edges_only', 'reg_beside_corners',
+               'slug_file', 'slug_sheet', 'slug_print_area', 'slug_sizes', 'slug_datetime', 'slug_text',
+               'slug_size', 'slug_font', 'slug_top', 'slug_side', 'slug_sheet_word', 'slug_page_word', 'slug_roman')
+MARK_CHOICES = {'gross_mark_pages': ('Wszystkie', 'Nieparzyste', 'Parzyste'), 'reg_variant': (1, 2),
+                'slug_size': (10, 12, 14), 'slug_font': ('Arial', 'Courier')}
 MARK_DIALOGS = {
+    'gross': ('Znaczniki rozmiaru brutto', (
+        ('gross_mark_lp', 'Długość LP — kreska pozioma [mm]'),
+        ('gross_mark_gd', 'Długość GD — kreska pionowa [mm]'),
+        ('gross_mark_pt', 'Grubość [pt]'),
+        ('gross_mark_pages', 'Umieść na stronach pliku wynikowego'),
+        ('gross_first_sheet', 'Tylko na pierwszym arkuszu'))),
+    'register': ('Pasery', (
+        ('reg_variant', 'Wariant (1 = okrąg z krzyżem, 2 = dwa okręgi z krzyżem)'),
+        ('reg_diameter', 'Średnica [mm]'),
+        ('reg_pt', 'Grubość kreski [pt]'),
+        ('reg_long', 'Liczba paserów na dłuższym boku'),
+        ('reg_short', 'Liczba paserów na krótszym boku'),
+        ('reg_offset', 'Odsunięcie H od brutto użytków [mm] (0 = automatycznie)'),
+        ('reg_edges_only', 'Tylko pasery wzdłuż boków (bez narożnych)'),
+        ('reg_beside_corners', 'Narożne przy narożnikach (zamiast w narożnikach)'))),
+    'slug': ('Opis impozycji', (
+        ('slug_file', 'Nazwa pliku z impozycją'),
+        ('slug_sheet', 'Oznaczenie arkusza i strony'),
+        ('slug_sheet_word', 'Słowne oznaczenie arkusza'),
+        ('slug_page_word', 'Słowne oznaczenie strony'),
+        ('slug_roman', 'Numeracja strony rzymska (I, II)'),
+        ('slug_print_area', 'Rozmiar pola zadruku'),
+        ('slug_sizes', 'Rozmiar netto, brutto i spady'),
+        ('slug_datetime', 'Data i godzina utworzenia'),
+        ('slug_text', 'Tekst dodatkowy'),
+        ('slug_size', 'Stopień pisma [pt]'),
+        ('slug_font', 'Krój pisma'),
+        ('slug_top', 'Na krawędzi górnej (o ile możliwe)'),
+        ('slug_side', 'Na lewej krawędzi bocznej'))),
     'cut': ('Linie cięcia (znaczniki netto)', (
         ('mark_offset', 'Odstęp znaczników od użytków (od spadu) [mm]'),
         ('mark_length', 'Długość kreski [mm]'),
@@ -238,6 +274,9 @@ class App(tk.Tk):
         self.labels_var = tk.BooleanVar(value=False)
         self.gutter_var = tk.BooleanVar(value=False)
         self.trimcrop_var = tk.BooleanVar(value=False)
+        self.gross_var = tk.BooleanVar(value=False)
+        self.reg_var = tk.BooleanVar(value=False)
+        self.slug_var = tk.BooleanVar(value=False)
         defaults = Settings()
         self.mark_params = {key: getattr(defaults, key) for key in MARK_PARAMS}
         self.status_text = tk.StringVar(value='')
@@ -313,7 +352,8 @@ class App(tk.Tk):
         self.bind('<Control-o>', lambda e: self.add_files())
         self.bind('<Control-s>', lambda e: self.save_project())
         # Skróty jak w Impozycjonerze 4: Ctrl+N nowa impozycja, Ctrl+W wczytaj projekt, Shift+Ctrl+S zapisz jako.
-        for key, var in (('n', self.marks_var), ('w', self.gutter_var), ('t', self.trimcrop_var)):
+        for key, var in (('n', self.marks_var), ('w', self.gutter_var), ('t', self.trimcrop_var),
+                         ('b', self.gross_var), ('p', self.reg_var), ('o', self.slug_var)):
             self.bind(f'<KeyPress-{key}>', lambda e, v=var: self._mark_shortcut(e, v))
             self.bind(f'<KeyPress-{key.upper()}>', lambda e, v=var: self._mark_shortcut(e, v))
         self.bind('<Control-n>', lambda e: self.new_project())
@@ -585,6 +625,9 @@ class App(tk.Tk):
         for icon, text, var, kind in (('marks', 'Linie\ncięcia (N)', self.marks_var, 'cut'),
                                       ('gutter', 'Wycinka\n(W)', self.gutter_var, 'gutter'),
                                       ('trimcrop', 'Docięcie\nTrimBox (T)', self.trimcrop_var, 'trimcrop'),
+                                      ('gross', 'Brutto\n(B)', self.gross_var, 'gross'),
+                                      ('register', 'Pasery\n(P)', self.reg_var, 'register'),
+                                      ('slug', 'Opis\narkusza (O)', self.slug_var, 'slug'),
                                       ('numbers', 'Numery\nstron', self.labels_var, None)):
             button = ttk.Checkbutton(marks, text=text, image=self._icon(icon), compound='top', variable=var,
                                      style='Tool.Toolbutton', width=9, command=self.schedule_refresh)
@@ -872,6 +915,9 @@ class App(tk.Tk):
         self.labels_var.set(s.show_page_labels)
         self.gutter_var.set(s.gutter_on)
         self.trimcrop_var.set(s.trim_crop)
+        self.gross_var.set(s.gross_marks)
+        self.reg_var.set(s.reg_marks)
+        self.slug_var.set(s.slug_on)
         self.white_trim_var.set(s.white_trim)
         self.mark_params = {key: getattr(s, key) for key in MARK_PARAMS}
         self._suspend_events=False
@@ -941,6 +987,7 @@ class App(tk.Tk):
                         flip=self.flip_var.get(),crop_marks=self.marks_var.get(),
                         show_page_labels=self.labels_var.get(),
                         gutter_on=self.gutter_var.get(), trim_crop=self.trimcrop_var.get(),
+                        gross_marks=self.gross_var.get(), reg_marks=self.reg_var.get(), slug_on=self.slug_var.get(),
                         white_trim=self.white_trim_var.get(),
                         **self.mark_params)
 
@@ -1392,7 +1439,7 @@ class App(tk.Tk):
             used = sum(1 for p in side.placements if p.source is not None) if side else 0
             self.slots_title.set(f'Tabela użytków ({used})' + ('  •  REJESTRACJA przód + tył' if self.register_overlay and s.mode == 'Dwustronnie' else ''))
             self.side_text.set(f'Arkusz {side.sheet_number} • {"Recto" if side.side == 0 else "Verso"}' if side else 'Brak stron')
-            notes = gutter_notes(s)
+            notes = gutter_notes(s) + slug_notes(s)
             self.stats_text.set(f'{details}   •   arkusz {s.sheet_w:g} × {s.sheet_h:g} mm' + ('  •  MIX NAKŁADÓW' if s.mode == 'Ekonomiczny' else '')
                                 + ''.join(f'   •   {note}' for note in notes))
         except Exception as e:
@@ -1532,7 +1579,8 @@ class App(tk.Tk):
         return 'break'
 
     def marks_all_off(self):
-        for var in (self.marks_var, self.gutter_var, self.trimcrop_var, self.labels_var):
+        for var in (self.marks_var, self.gutter_var, self.trimcrop_var, self.gross_var, self.reg_var,
+                    self.slug_var, self.labels_var):
             var.set(False)
         self.schedule_refresh()
 
@@ -1553,9 +1601,17 @@ class App(tk.Tk):
                 values[key] = tk.BooleanVar(value=current)
                 ttk.Checkbutton(body, text=label, variable=values[key]).grid(row=row, column=0, columnspan=2,
                                                                              sticky='w', pady=2)
+                continue
+            ttk.Label(body, text=label).grid(row=row, column=0, sticky='w', pady=2)
+            if key in MARK_CHOICES:
+                values[key] = tk.StringVar(value=str(current))
+                ttk.Combobox(body, textvariable=values[key], values=[str(v) for v in MARK_CHOICES[key]],
+                             state='readonly', width=12).grid(row=row, column=1, sticky='e', padx=(10, 0))
+            elif isinstance(current, str):
+                values[key] = tk.StringVar(value=current)
+                ttk.Entry(body, textvariable=values[key], width=24).grid(row=row, column=1, sticky='e', padx=(10, 0))
             else:
                 values[key] = tk.StringVar(value=f'{current:g}')
-                ttk.Label(body, text=label).grid(row=row, column=0, sticky='w', pady=2)
                 ttk.Entry(body, textvariable=values[key], width=9).grid(row=row, column=1, sticky='e', padx=(10, 0))
         if kind == 'gutter':
             ttk.Label(body, text='Wycinka jest uwzględniana tylko wtedy, gdy to możliwe: pionowa przy parzystej '
@@ -1571,14 +1627,20 @@ class App(tk.Tk):
             new = dict(self.mark_params)
             try:
                 for key, var in values.items():
+                    old = self.mark_params[key]
                     if isinstance(var, tk.BooleanVar):
                         new[key] = var.get()
+                    elif isinstance(old, str):
+                        new[key] = var.get().strip()
+                    elif isinstance(old, int):
+                        new[key] = int(var.get().strip())
                     else:
                         new[key] = float(var.get().strip().replace(',', '.'))
                 validate(replace(self._read_fields(), **new))
             except ValueError as exc:
-                messagebox.showerror(title, str(exc) if str(exc) and 'could not convert' not in str(exc)
-                                     else 'Wpisz liczbę.', parent=dlg)
+                text = str(exc)
+                messagebox.showerror(title, 'Wpisz liczbę.' if 'could not convert' in text or 'invalid literal' in text
+                                     else text, parent=dlg)
                 return
             self.mark_params = new
             dlg.destroy()

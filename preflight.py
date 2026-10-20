@@ -11,7 +11,7 @@ import json
 
 import pymupdf as fitz
 
-from engine import Job, Project, Settings, mm, media_rect, open_sources, scaling_layout, validate, bleed_for, gross_dimensions, validate_job_roles, _duplex_pairs, project_sides, overlapping_uses, plan_sides, crop_offsets, crop_centre, ROLE_AUTO, ROLE_SKIP, economic_report, gutter_notes, FILL_GROSS
+from engine import Job, Project, Settings, mm, media_rect, open_sources, scaling_layout, validate, bleed_for, gross_dimensions, validate_job_roles, _duplex_pairs, project_sides, overlapping_uses, plan_sides, crop_offsets, crop_centre, ROLE_AUTO, ROLE_SKIP, economic_report, gutter_notes, FILL_GROSS, slug_notes
 
 
 @dataclass(frozen=True)
@@ -145,8 +145,10 @@ def inspect_project(project: Project, *, min_dpi: int = 200,
     checked = 0
     total = sum(len(doc) for doc in docs.values())
     try:
-        for note in gutter_notes(s):  # wycinka włączona, ale technicznie niemożliwa
-            findings.append(Finding('UWAGA', project.jobs[0].path, 0, 'WYCINKA', note))
+        # wycinka lub opis arkusza włączone, ale przy obecnych ustawieniach niemożliwe
+        for code, notes in (('WYCINKA', gutter_notes(s)), ('OPIS', slug_notes(s))):
+            for note in notes:
+                findings.append(Finding('UWAGA', project.jobs[0].path, 0, code, note))
         # In duplex, an invalid front/back mapping must block export even when
         # all source PDFs themselves pass geometry/prepress checks.
         try:

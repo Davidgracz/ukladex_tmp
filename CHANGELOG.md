@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Marks from the final Imp4 (UI texts read with REA): gross-size marks (B: LP/GD length, width, all/odd/even pages,
+  first sheet only), registration marks (P: own designs 1/2, diameter, count per long/short side, automatic or own
+  offset, corner/edge placement, 100 % CMYK) and imposition slug (O: output file name, "Arkusz N • Strona M" with
+  arabic/roman numbering, print area, net/gross/bleed, date and time, extra text; 10/12/14 pt Arial/Courier; top
+  and/or left edge; a preflight/status note when it does not fit). Parameters dialog supports choices and text.
+  New `.psimp` fields are optional; defaults keep the previous output. Tests: `tests/test_marks_gross_reg_slug.py`.
+
 - Scaling and cropping: new fit mode „Wypełnij ze spadem” (artwork covers net + bleed, e.g. A4 → A6 + 1.5 mm, overflow
   cropped, no white bleed) and „przytnij białe marginesy źródła” (detects a white frame around the artwork and uses
   the content area; `whitecrop.py`). Works in imposition, single-page export and preflight.
