@@ -27,6 +27,17 @@ Znaczniki brutto, pasery i opis impozycji (E1: okna „Parametry znaczników roz
   H-31 opis: jedna linia tekstu nad siatką użytków (krawędź górna) i/lub obrócona przy lewej krawędzi; gdy się
        nie mieści, stopień pisma maleje do 6 pt, a potem opis jest pomijany z uwagą; numeracja rzymska dotyczy
        oznaczenia strony arkusza.
+
+Pasek kontroli koloru (E1: okno „Parametry pasków kontroli koloru”): 12 kostek K1–K12 o kolorach użytkownika
+(co najmniej jedna musi mieć kolor), szerokość i wysokość kostki, „ilość stref”, odsunięcie paska od innych
+elementów, położenie na górze / na dole arkusza / na wycince poziomej, pełna długość pola zadruku albo
+„długość pola zadruku minus X”, pasek wyśrodkowany albo od lewej, alternatywnie pasek z pliku PDF.
+  H-32 kostki z kolorem tworzą sekwencję powtarzaną cyklicznie na całej długości paska (tyle całych kostek,
+       ile się mieści); „ilość stref” > 0 ogranicza pasek do tylu powtórzeń sekwencji; domyślne kolory K1–K12 są
+       nasze (C, M, Y, K, CM, CY, MY, CMY i 50 % C, M, Y, K);
+  H-33 pasek u góry leży nad znacznikami cięcia (odsunięcie od nich), u dołu — pod nimi, na wycince poziomej —
+       w jej osi (gdy wycinka jest co najmniej o 2 × odsunięcie szersza od kostki); gdy nie ma miejsca, pasek
+       nie jest rysowany i pojawia się uwaga; opis arkusza u góry przesuwa się nad pasek.
 """
 from __future__ import annotations
 
@@ -36,6 +47,48 @@ from math import floor
 
 Rect = tuple[float, float, float, float]   # x0, y0, x1, y1 w mm
 Segment = tuple[tuple[float, float], tuple[float, float]]
+Cmyk = tuple[float, float, float, float]   # procenty 0–100
+
+DEFAULT_STRIP_COLORS: tuple[Cmyk | None, ...] = (
+    (100, 0, 0, 0), (0, 100, 0, 0), (0, 0, 100, 0), (0, 0, 0, 100),
+    (100, 100, 0, 0), (100, 0, 100, 0), (0, 100, 100, 0), (100, 100, 100, 0),
+    (50, 0, 0, 0), (0, 50, 0, 0), (0, 0, 50, 0), (0, 0, 0, 50))
+
+
+def parse_cmyk(text: str) -> Cmyk | None:
+    """„c/m/y/k” w procentach (np. „100/0/0/0”); puste = kostka bez koloru."""
+    text = (text or '').strip()
+    if not text:
+        return None
+    parts = text.replace(',', '.').replace(';', '/').replace(' ', '').split('/')
+    if len(parts) != 4:
+        raise ValueError(f'Kolor kostki „{text}”: podaj C/M/Y/K, np. 100/0/0/0')
+    try:
+        values = tuple(float(p) for p in parts)
+    except ValueError:
+        raise ValueError(f'Kolor kostki „{text}”: wartości muszą być liczbami') from None
+    if any(not 0 <= v <= 100 for v in values):
+        raise ValueError(f'Kolor kostki „{text}”: każda składowa 0–100 %')
+    return values
+
+
+def format_cmyk(color: Cmyk | None) -> str:
+    return '' if color is None else '/'.join(f'{v:g}' for v in color)
+
+
+def strip_cells(length: float, cell_w: float, colors, zones: int = 0,
+                centered: bool = True) -> list[tuple[float, Cmyk]]:
+    """Kostki paska (H-32): lista (przesunięcie od początku obszaru, kolor CMYK %)."""
+    active = [c for c in colors if c is not None]
+    if not active:
+        raise ValueError('Sprawdź kolory kostek: przynajmniej jedna musi mieć zdefiniowany kolor.')
+    if cell_w <= 0 or length <= 0:
+        return []
+    count = floor(length / cell_w + 1e-9)
+    if zones > 0:
+        count = min(count, zones * len(active))
+    start = (length - count * cell_w) / 2 if centered else 0.0
+    return [(start + i * cell_w, active[i % len(active)]) for i in range(count)]
 
 
 def _overlaps(a: Rect, b: Rect) -> bool:

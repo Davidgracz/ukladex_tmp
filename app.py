@@ -20,7 +20,7 @@ from duplex_test_sheet import create_duplex_test_pdf, correction_from_front_erro
 from economic_csv import write_economic_csv
 from crop_editor import CropEditor
 from ui_icons import draw as draw_icon
-from engine import RUN_MODES, RUN_ALL, gutter_notes, slug_notes, FILL_GROSS
+from engine import RUN_MODES, RUN_ALL, gutter_notes, slug_notes, strip_notes, FILL_GROSS
 
 # Parametry znaczników (okna „definicji” w Imp4) trzymane poza polami wstęgi.
 MARK_PARAMS = ('mark_offset', 'mark_length', 'mark_width_pt', 'gutter_v', 'gutter_h', 'gutter_marks',
@@ -29,10 +29,24 @@ MARK_PARAMS = ('mark_offset', 'mark_length', 'mark_width_pt', 'gutter_v', 'gutte
                'reg_variant', 'reg_diameter', 'reg_pt', 'reg_long', 'reg_short', 'reg_offset',
                'reg_edges_only', 'reg_beside_corners',
                'slug_file', 'slug_sheet', 'slug_print_area', 'slug_sizes', 'slug_datetime', 'slug_text',
-               'slug_size', 'slug_font', 'slug_top', 'slug_side', 'slug_sheet_word', 'slug_page_word', 'slug_roman')
+               'slug_size', 'slug_font', 'slug_top', 'slug_side', 'slug_sheet_word', 'slug_page_word', 'slug_roman',
+               'strip_top', 'strip_bottom', 'strip_gutter', 'strip_cell_w', 'strip_cell_h', 'strip_zones',
+               'strip_offset', 'strip_centered', 'strip_trim', 'strip_colors', 'strip_pdf')
 MARK_CHOICES = {'gross_mark_pages': ('Wszystkie', 'Nieparzyste', 'Parzyste'), 'reg_variant': (1, 2),
                 'slug_size': (10, 12, 14), 'slug_font': ('Arial', 'Courier')}
 MARK_DIALOGS = {
+    'strip': ('Pasek kontroli koloru', (
+        ('strip_top', 'Rysuj pasek na górze arkusza'),
+        ('strip_bottom', 'Rysuj pasek na dole arkusza'),
+        ('strip_gutter', 'Rysuj pasek na wycince poziomej'),
+        ('strip_cell_w', 'Szerokość kostki [mm]'),
+        ('strip_cell_h', 'Wysokość kostki [mm]'),
+        ('strip_zones', 'Ilość stref (powtórzeń sekwencji; 0 = cała długość)'),
+        ('strip_offset', 'Odsunięcie paska od innych elementów [mm]'),
+        ('strip_trim', 'Długość = pole zadruku minus [mm] (0 = pełna długość)'),
+        ('strip_centered', 'Pasek wyśrodkowany (inaczej od lewej)'),
+        ('strip_colors', 'Kolory kostek K1–K12 (C/M/Y/K w %, puste = brak)'),
+        ('strip_pdf', 'Pasek z pliku PDF (puste = rysowany przez program)'))),
     'gross': ('Znaczniki rozmiaru brutto', (
         ('gross_mark_lp', 'Długość LP — kreska pozioma [mm]'),
         ('gross_mark_gd', 'Długość GD — kreska pionowa [mm]'),
@@ -76,6 +90,7 @@ MARK_DIALOGS = {
         ('trim_crop_pt', 'Szerokość docięcia [pt] (z lewej na parzystych, z prawej na nieparzystych)'),)),
 }
 from naming import add_imposition_phrase, output_name_problem
+import marks
 import table_actions
 from tools_ui import PdfToolsFrame
 
@@ -277,6 +292,7 @@ class App(tk.Tk):
         self.gross_var = tk.BooleanVar(value=False)
         self.reg_var = tk.BooleanVar(value=False)
         self.slug_var = tk.BooleanVar(value=False)
+        self.strip_var = tk.BooleanVar(value=False)
         defaults = Settings()
         self.mark_params = {key: getattr(defaults, key) for key in MARK_PARAMS}
         self.status_text = tk.StringVar(value='')
@@ -353,7 +369,8 @@ class App(tk.Tk):
         self.bind('<Control-s>', lambda e: self.save_project())
         # Skróty jak w Impozycjonerze 4: Ctrl+N nowa impozycja, Ctrl+W wczytaj projekt, Shift+Ctrl+S zapisz jako.
         for key, var in (('n', self.marks_var), ('w', self.gutter_var), ('t', self.trimcrop_var),
-                         ('b', self.gross_var), ('p', self.reg_var), ('o', self.slug_var)):
+                         ('b', self.gross_var), ('p', self.reg_var), ('o', self.slug_var),
+                         ('k', self.strip_var)):
             self.bind(f'<KeyPress-{key}>', lambda e, v=var: self._mark_shortcut(e, v))
             self.bind(f'<KeyPress-{key.upper()}>', lambda e, v=var: self._mark_shortcut(e, v))
         self.bind('<Control-n>', lambda e: self.new_project())
@@ -628,6 +645,7 @@ class App(tk.Tk):
                                       ('gross', 'Brutto\n(B)', self.gross_var, 'gross'),
                                       ('register', 'Pasery\n(P)', self.reg_var, 'register'),
                                       ('slug', 'Opis\narkusza (O)', self.slug_var, 'slug'),
+                                      ('strip', 'Pasek\nkontrolny (K)', self.strip_var, 'strip'),
                                       ('numbers', 'Numery\nstron', self.labels_var, None)):
             button = ttk.Checkbutton(marks, text=text, image=self._icon(icon), compound='top', variable=var,
                                      style='Tool.Toolbutton', width=9, command=self.schedule_refresh)
@@ -918,6 +936,7 @@ class App(tk.Tk):
         self.gross_var.set(s.gross_marks)
         self.reg_var.set(s.reg_marks)
         self.slug_var.set(s.slug_on)
+        self.strip_var.set(s.strip_on)
         self.white_trim_var.set(s.white_trim)
         self.mark_params = {key: getattr(s, key) for key in MARK_PARAMS}
         self._suspend_events=False
@@ -988,6 +1007,7 @@ class App(tk.Tk):
                         show_page_labels=self.labels_var.get(),
                         gutter_on=self.gutter_var.get(), trim_crop=self.trimcrop_var.get(),
                         gross_marks=self.gross_var.get(), reg_marks=self.reg_var.get(), slug_on=self.slug_var.get(),
+                        strip_on=self.strip_var.get(),
                         white_trim=self.white_trim_var.get(),
                         **self.mark_params)
 
@@ -1439,7 +1459,7 @@ class App(tk.Tk):
             used = sum(1 for p in side.placements if p.source is not None) if side else 0
             self.slots_title.set(f'Tabela użytków ({used})' + ('  •  REJESTRACJA przód + tył' if self.register_overlay and s.mode == 'Dwustronnie' else ''))
             self.side_text.set(f'Arkusz {side.sheet_number} • {"Recto" if side.side == 0 else "Verso"}' if side else 'Brak stron')
-            notes = gutter_notes(s) + slug_notes(s)
+            notes = gutter_notes(s) + slug_notes(s) + strip_notes(s)
             self.stats_text.set(f'{details}   •   arkusz {s.sheet_w:g} × {s.sheet_h:g} mm' + ('  •  MIX NAKŁADÓW' if s.mode == 'Ekonomiczny' else '')
                                 + ''.join(f'   •   {note}' for note in notes))
         except Exception as e:
@@ -1580,7 +1600,7 @@ class App(tk.Tk):
 
     def marks_all_off(self):
         for var in (self.marks_var, self.gutter_var, self.trimcrop_var, self.gross_var, self.reg_var,
-                    self.slug_var, self.labels_var):
+                    self.slug_var, self.strip_var, self.labels_var):
             var.set(False)
         self.schedule_refresh()
 
@@ -1603,6 +1623,43 @@ class App(tk.Tk):
                                                                              sticky='w', pady=2)
                 continue
             ttk.Label(body, text=label).grid(row=row, column=0, sticky='w', pady=2)
+            if key == 'strip_colors':  # 12 kostek: C/M/Y/K w %, z podglądem koloru
+                grid = ttk.Frame(body)
+                grid.grid(row=row, column=1, sticky='e', padx=(10, 0))
+                values[key] = []
+                for i, color in enumerate(current):
+                    var = tk.StringVar(value=marks.format_cmyk(color))
+                    values[key].append(var)
+                    cell = ttk.Frame(grid)
+                    cell.grid(row=i // 4, column=i % 4, padx=2, pady=1)
+                    swatch = tk.Label(cell, text=f'K{i + 1}', width=3, relief='solid', borderwidth=1)
+                    swatch.pack(side='left')
+                    ttk.Entry(cell, textvariable=var, width=11).pack(side='left')
+
+                    def paint(*_, v=var, sw=swatch):
+                        try:
+                            c = marks.parse_cmyk(v.get())
+                        except ValueError:
+                            sw.configure(background='#f3c4c4')
+                            return
+                        if c is None:
+                            sw.configure(background=PANEL, foreground=TEXT)
+                            return
+                        cy, mg, ye, k = (x / 100 for x in c)
+                        rgb = tuple(int(255 * (1 - a) * (1 - k)) for a in (cy, mg, ye))
+                        dark = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2] < 128
+                        sw.configure(background='#%02x%02x%02x' % rgb, foreground='white' if dark else 'black')
+                    var.trace_add('write', paint)
+                    paint()
+                continue
+            if key == 'strip_pdf':
+                values[key] = tk.StringVar(value=current)
+                box = ttk.Frame(body)
+                box.grid(row=row, column=1, sticky='e', padx=(10, 0))
+                ttk.Entry(box, textvariable=values[key], width=30).pack(side='left')
+                ttk.Button(box, text='Wybierz…', command=lambda v=values[key]: v.set(
+                    filedialog.askopenfilename(parent=dlg, filetypes=[('PDF', '*.pdf')]) or v.get())).pack(side='left', padx=(4, 0))
+                continue
             if key in MARK_CHOICES:
                 values[key] = tk.StringVar(value=str(current))
                 ttk.Combobox(body, textvariable=values[key], values=[str(v) for v in MARK_CHOICES[key]],
@@ -1628,7 +1685,9 @@ class App(tk.Tk):
             try:
                 for key, var in values.items():
                     old = self.mark_params[key]
-                    if isinstance(var, tk.BooleanVar):
+                    if key == 'strip_colors':
+                        new[key] = tuple(marks.parse_cmyk(v.get()) for v in var)
+                    elif isinstance(var, tk.BooleanVar):
                         new[key] = var.get()
                     elif isinstance(old, str):
                         new[key] = var.get().strip()

@@ -137,6 +137,24 @@ class Settings:
     slug_sheet_word: str = 'Arkusz'
     slug_page_word: str = 'Strona'
     slug_roman: bool = False
+    # Pasek kontroli koloru (K) — marks.py, H-32, H-33.
+    strip_on: bool = False
+    strip_top: bool = True
+    strip_bottom: bool = False
+    strip_gutter: bool = False
+    strip_cell_w: float = 5.0
+    strip_cell_h: float = 5.0
+    strip_zones: int = 0          # 0 = cała dostępna długość
+    strip_offset: float = 1.0     # mm od innych elementów (znaczników, użytków)
+    strip_centered: bool = True
+    strip_trim: float = 0.0       # 0 = pełna długość pola zadruku; X = pole zadruku minus X mm
+    strip_colors: tuple = marks_rules.DEFAULT_STRIP_COLORS
+    strip_pdf: str = ''           # pasek z pliku PDF zamiast rysowanego przez program
+
+    def __post_init__(self):
+        # JSON zapisuje krotki jako listy — wracamy do niezmiennej postaci (porównania, wartości domyślne).
+        if isinstance(self.strip_colors, list):
+            self.strip_colors = tuple(None if c is None else tuple(c) for c in self.strip_colors)
 
 
 FILL_GROSS = 'Wypełnij ze spadem'  # grafika pokrywa netto + spad; spad powstaje z grafiki, nadmiar jest docinany
@@ -272,6 +290,26 @@ def validate(settings: Settings):
         value = getattr(settings, key)
         if type(value) is not int or value not in allowed:
             raise ValueError(f'{label}: niedozwolona wartość {value!r}')
+    for key, low, high, label in (('strip_cell_w', 1, 50, 'Szerokość kostki [mm]'),
+                                  ('strip_cell_h', 1, 50, 'Wysokość kostki [mm]'),
+                                  ('strip_offset', 0, 50, 'Odsunięcie paska [mm]'),
+                                  ('strip_trim', 0, 3000, 'Skrócenie paska [mm]')):
+        value = getattr(settings, key)
+        if type(value) not in (int, float) or not isfinite(value) or not low <= value <= high:
+            raise ValueError(f'{label}: dozwolone {low:g}–{high:g}')
+    if type(settings.strip_zones) is not int or not 0 <= settings.strip_zones <= 500:
+        raise ValueError('Ilość stref paska: liczba całkowita 0–500 (0 = cała długość)')
+    colors = settings.strip_colors
+    if not isinstance(colors, (tuple, list)) or len(colors) != 12:
+        raise ValueError('Pasek kontroli: potrzeba 12 kostek K1–K12')
+    for color in colors:
+        if color is not None and (len(color) != 4 or any(
+                type(v) not in (int, float) or not 0 <= v <= 100 for v in color)):
+            raise ValueError('Kolor kostki: cztery składowe CMYK 0–100 %')
+    if settings.strip_on and not settings.strip_pdf and all(c is None for c in colors):
+        raise ValueError('Sprawdź kolory kostek! Przynajmniej jedna powinna mieć zdefiniowany kolor.')
+    if not isinstance(settings.strip_pdf, str):
+        raise ValueError('Pasek z pliku PDF: ścieżka musi być tekstem')
     if settings.slug_font not in ('Arial', 'Courier'):
         raise ValueError('Krój pisma opisu: Arial albo Courier')
     for key in ('slug_text', 'slug_sheet_word', 'slug_page_word'):
@@ -1175,6 +1213,8 @@ def slug_layout(s: Settings, grid, text: str):
     font = fitz.Font(SLUG_FONTS[s.slug_font])
     gap = 1.0
     reserved = _marks_extent(s) + gap
+    if any(where == 'top' for where, *_ in strip_bands(s, grid)[0]):
+        reserved += strip_size(s)[0] + s.strip_offset   # opis nad paskiem kontroli koloru (H-33)
     placements = []
     for where in (('top',) if s.slug_top else ()) + (('side',) if s.slug_side else ()):
         band = grid[1] - reserved if where == 'top' else grid[0] - reserved
@@ -1188,6 +1228,84 @@ def slug_layout(s: Settings, grid, text: str):
                 placements.append((point, 0 if where == 'top' else 90, size))
                 break
     return placements
+
+
+_strip_pdf_cache: dict[tuple, tuple[float, float]] = {}
+
+
+def strip_size(s: Settings) -> tuple[float, float | None]:
+    """(wysokość, szerokość albo None) paska w mm; dla paska z PDF — rozmiar pierwszej strony pliku."""
+    if not s.strip_pdf:
+        return s.strip_cell_h, None
+    path = Path(s.strip_pdf)
+    if not path.is_file():
+        raise ValueError(f'Brak pliku paska kontroli: {s.strip_pdf}')
+    key = (str(path), path.stat().st_mtime)
+    if key not in _strip_pdf_cache:
+        try:
+            with fitz.open(str(path)) as doc:
+                rect = doc[0].rect
+        except Exception as exc:
+            raise ValueError(f'Plik paska kontroli nie jest poprawnym PDF: {path.name}') from exc
+        _strip_pdf_cache[key] = (mm(rect.height), mm(rect.width))
+    return _strip_pdf_cache[key]
+
+
+def strip_bands(s: Settings, grid) -> tuple[list[tuple[str, float, float, float]], list[str]]:
+    """Położenia paska kontroli (H-33): [(gdzie, y0, x0, długość mm)] oraz uwagi, gdzie się nie zmieścił."""
+    if not s.strip_on or grid is None or s.mode == 'Broszura':
+        return [], []
+    height, pdf_width = strip_size(s)
+    length = s.sheet_w - 2*s.margin_x - s.strip_trim
+    x0 = s.margin_x + (s.strip_trim / 2 if s.strip_centered else 0.0)
+    if length <= 0 or (pdf_width is not None and pdf_width > length + 1e-6):
+        return [], ['Pasek kontroli koloru jest dłuższy niż dostępne pole zadruku.']
+    if pdf_width is not None:  # pasek z PDF: jedna kopia, wyśrodkowana albo od lewej
+        x0, length = (x0 + (length - pdf_width) / 2 if s.strip_centered else x0), pdf_width
+    reserved = _marks_extent(s) + s.strip_offset
+    bands, notes = [], []
+    if s.strip_top:
+        y0 = grid[1] - reserved - height
+        (bands.append(('top', y0, x0, length)) if y0 >= -1e-6
+         else notes.append('Pasek kontroli koloru nie mieści się na górze arkusza.'))
+    if s.strip_bottom:
+        y0 = grid[3] + reserved
+        (bands.append(('bottom', y0, x0, length)) if y0 + height <= s.sheet_h + 1e-6
+         else notes.append('Pasek kontroli koloru nie mieści się na dole arkusza.'))
+    if s.strip_gutter:
+        g = geometry(s)
+        if g.gutter_y is not None and s.gutter_h + 1e-6 >= height + 2*s.strip_offset:
+            bands.append(('gutter', g.gutter_y - height/2, x0, length))
+        else:
+            notes.append('Pasek na wycince poziomej wymaga włączonej wycinki poziomej szerszej niż '
+                         'kostka + 2 × odsunięcie (i parzystej liczby wierszy).')
+    return bands, notes
+
+
+def draw_color_strip(target: fitz.Page, s: Settings, grid):
+    bands, _ = strip_bands(s, grid)
+    height, pdf_width = strip_size(s)
+    for _where, y0, x0, length in bands:
+        if pdf_width is not None:
+            with fitz.open(s.strip_pdf) as strip_doc:
+                target.show_pdf_page(fitz.Rect(pt(x0), pt(y0), pt(x0 + length), pt(y0 + height)), strip_doc, 0)
+            continue
+        for offset, (c, m, y, k) in marks_rules.strip_cells(length, s.strip_cell_w, s.strip_colors,
+                                                            s.strip_zones, s.strip_centered):
+            target.draw_rect(fitz.Rect(pt(x0 + offset), pt(y0), pt(x0 + offset + s.strip_cell_w), pt(y0 + height)),
+                             color=None, fill=(c / 100, m / 100, y / 100, k / 100), width=0)
+
+
+def strip_notes(s: Settings) -> list[str]:
+    if not s.strip_on or s.mode == 'Broszura':
+        return []
+    g = geometry(s)
+    b = bleed_for(s)
+    grid = marks_rules.bounding([(sl.x - b, sl.y - b, sl.x + sl.w + b, sl.y + sl.h + b) for sl in g.slots])
+    bands, notes = strip_bands(s, grid)
+    if not (s.strip_top or s.strip_bottom or s.strip_gutter):
+        notes.append('Pasek kontroli koloru włączony, ale nie wybrano położenia (góra / dół / wycinka).')
+    return notes
 
 
 def _slug_for(side: SheetSide, s: Settings, output_name: str | None, when=None) -> str:
@@ -1204,11 +1322,13 @@ def _slug_for(side: SheetSide, s: Settings, output_name: str | None, when=None) 
 
 def draw_sheet_marks(target: fitz.Page, side: SheetSide, s: Settings, output_name: str | None = None, when=None):
     """Znaczniki brutto, pasery i opis impozycji na stronie arkusza (wszystkie domyślnie wyłączone)."""
-    if not (s.gross_marks or s.reg_marks or s.slug_on) or not side.placements:
+    if not (s.gross_marks or s.reg_marks or s.slug_on or s.strip_on) or not side.placements:
         return
     sheet = (0.0, 0.0, s.sheet_w, s.sheet_h)
     all_gross = _gross_rects(side, s, placed_only=False)
     grid = marks_rules.bounding(all_gross)
+    if s.strip_on:
+        draw_color_strip(target, s, grid)
     if s.gross_marks and marks_rules.page_selected(target.number + 1, s.gross_mark_pages) and (
             not s.gross_first_sheet or side.sheet_number == 1):
         placed = _gross_rects(side, s, placed_only=True)
