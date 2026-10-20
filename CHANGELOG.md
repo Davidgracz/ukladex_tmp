@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Cut marks (guillotine, N) now follow the full Imp4 "net size marks" window: separate LP/GD lengths (GD=LP switch),
+  colour (previous black / K 100 % / registration), all/odd/even output pages, first sheet only, corner marks
+  LG/PG/LD/PD (clamped to half the use), net centre marks, and an option to keep marks off neighbouring uses.
+  Geometry in `marks.py`. Default settings produce byte-identical drawing streams (checked on all example
+  projects against the previous `main`). Tests: `tests/test_cut_marks.py`.
+
 - Colour control strip (K) as in the final Imp4: 12 cubes K1–K12 (CMYK %, at least one coloured), cube size, zones,
   offset, top / bottom / horizontal gutter, full print-area length or minus X, centred or from the left, or a strip
   taken from a PDF file. Drawn in DeviceCMYK; a note when it does not fit; the slug moves above the strip.

@@ -23,7 +23,11 @@ from ui_icons import draw as draw_icon
 from engine import RUN_MODES, RUN_ALL, gutter_notes, slug_notes, strip_notes, FILL_GROSS
 
 # Parametry znaczników (okna „definicji” w Imp4) trzymane poza polami wstęgi.
-MARK_PARAMS = ('mark_offset', 'mark_length', 'mark_width_pt', 'gutter_v', 'gutter_h', 'gutter_marks',
+MARK_PARAMS = ('mark_offset', 'mark_length', 'mark_width_pt',
+               'mark_gd_eq_lp', 'mark_length_gd', 'mark_pages', 'mark_first_sheet', 'mark_color', 'mark_skip_uses',
+               'mark_corners_on', 'mark_corner_len', 'mark_corner_lg', 'mark_corner_pg', 'mark_corner_ld',
+               'mark_corner_pd', 'mark_center',
+               'gutter_v', 'gutter_h', 'gutter_marks',
                'gutter_mark_length', 'gutter_mark_pt', 'trim_crop_pt',
                'gross_mark_lp', 'gross_mark_gd', 'gross_mark_pt', 'gross_mark_pages', 'gross_first_sheet',
                'reg_variant', 'reg_diameter', 'reg_pt', 'reg_long', 'reg_short', 'reg_offset',
@@ -33,7 +37,9 @@ MARK_PARAMS = ('mark_offset', 'mark_length', 'mark_width_pt', 'gutter_v', 'gutte
                'strip_top', 'strip_bottom', 'strip_gutter', 'strip_cell_w', 'strip_cell_h', 'strip_zones',
                'strip_offset', 'strip_centered', 'strip_trim', 'strip_colors', 'strip_pdf')
 MARK_CHOICES = {'gross_mark_pages': ('Wszystkie', 'Nieparzyste', 'Parzyste'), 'reg_variant': (1, 2),
-                'slug_size': (10, 12, 14), 'slug_font': ('Arial', 'Courier')}
+                'slug_size': (10, 12, 14), 'slug_font': ('Arial', 'Courier'),
+                'mark_pages': ('Wszystkie', 'Nieparzyste', 'Parzyste'),
+                'mark_color': ('Czarny (dotychczasowy)', 'K 100 %', 'Rejestracyjny (100 % CMYK)')}
 MARK_DIALOGS = {
     'strip': ('Pasek kontroli koloru', (
         ('strip_top', 'Rysuj pasek na górze arkusza'),
@@ -76,10 +82,23 @@ MARK_DIALOGS = {
         ('slug_font', 'Krój pisma'),
         ('slug_top', 'Na krawędzi górnej (o ile możliwe)'),
         ('slug_side', 'Na lewej krawędzi bocznej'))),
-    'cut': ('Linie cięcia (znaczniki netto)', (
+    'cut': ('Znaczniki cięcia (rozmiar netto)', (
         ('mark_offset', 'Odstęp znaczników od użytków (od spadu) [mm]'),
-        ('mark_length', 'Długość kreski [mm]'),
-        ('mark_width_pt', 'Grubość kreski [pt]'))),
+        ('mark_length', 'Długość LP — kreski poziome [mm]'),
+        ('mark_gd_eq_lp', 'GD = LP (kreski pionowe tej samej długości)'),
+        ('mark_length_gd', 'Długość GD — kreski pionowe [mm] (gdy GD ≠ LP)'),
+        ('mark_width_pt', 'Grubość kreski [pt]'),
+        ('mark_color', 'Kolor'),
+        ('mark_pages', 'Umieść na stronach pliku wynikowego'),
+        ('mark_first_sheet', 'Tylko na pierwszym arkuszu'),
+        ('mark_skip_uses', 'Nie rysuj kresek na sąsiednich użytkach (ze spadem)'),
+        ('mark_center', 'Zaznacz środek netto (kreski w połowie każdej krawędzi)'),
+        ('mark_corners_on', 'Zaznaczaj narożniki (kreski na linii cięcia, do środka użytku)'),
+        ('mark_corner_len', 'Długość kreski narożnej [mm] (max ½ wymiaru użytku)'),
+        ('mark_corner_lg', 'Narożnik LG (lewy górny)'),
+        ('mark_corner_pg', 'Narożnik PG (prawy górny)'),
+        ('mark_corner_ld', 'Narożnik LD (lewy dolny)'),
+        ('mark_corner_pd', 'Narożnik PD (prawy dolny)'))),
     'gutter': ('Wycinka środkowa', (
         ('gutter_v', 'Szerokość wycinki pionowej [mm] (parzysta liczba kolumn)'),
         ('gutter_h', 'Szerokość wycinki poziomej [mm] (parzysta liczba wierszy)'),
@@ -1663,7 +1682,7 @@ class App(tk.Tk):
             if key in MARK_CHOICES:
                 values[key] = tk.StringVar(value=str(current))
                 ttk.Combobox(body, textvariable=values[key], values=[str(v) for v in MARK_CHOICES[key]],
-                             state='readonly', width=12).grid(row=row, column=1, sticky='e', padx=(10, 0))
+                             state='readonly', width=26).grid(row=row, column=1, sticky='e', padx=(10, 0))
             elif isinstance(current, str):
                 values[key] = tk.StringVar(value=current)
                 ttk.Entry(body, textvariable=values[key], width=24).grid(row=row, column=1, sticky='e', padx=(10, 0))
