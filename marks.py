@@ -116,6 +116,74 @@ def clip_segment(segment: Segment, blockers: list[Rect], sheet: Rect) -> list[Se
     return [((p0, fixed), (p1, fixed)) if horizontal else ((fixed, p0), (fixed, p1)) for p0, p1 in parts]
 
 
+CORNERS = ('LG', 'PG', 'LD', 'PD')   # lewy/prawy × górny/dolny
+
+
+def cut_mark_segments(net: Rect, start: float, lp: float, gd: float,
+                      sheet_w: float, sheet_h: float) -> list[Segment]:
+    """Znaczniki cięcia netto (E1: długości LP i GD): kreski na przedłużeniu krawędzi netto, poza spadem.
+
+    `start` = odległość początku kreski od linii cięcia (spad + odstęp). LP = kreski poziome (w lewo/prawo od
+    pionowych krawędzi), GD = pionowe (w górę/dół od poziomych krawędzi). Kreska, która wyszłaby poza arkusz,
+    jest pomijana w całości — tak jak dotąd w Studio (kolejność kresek też bez zmian).
+    """
+    x0, y0, x1, y1 = net
+    segments = []
+    if lp > 0:
+        for cx in (x0, x1):
+            d = -1 if cx == x0 else 1
+            a, b = cx + d * start, cx + d * (start + lp)
+            if min(a, b) >= 0 and max(a, b) <= sheet_w:
+                segments += [((a, yy), (b, yy)) for yy in (y0, y1)]
+    if gd > 0:
+        for cy in (y0, y1):
+            d = -1 if cy == y0 else 1
+            a, b = cy + d * start, cy + d * (start + gd)
+            if min(a, b) >= 0 and max(a, b) <= sheet_h:
+                segments += [((xx, a), (xx, b)) for xx in (x0, x1)]
+    return segments
+
+
+def corner_segments(net: Rect, length: float, corners) -> list[Segment]:
+    """„Zaznaczaj narożniki” (E1): kreski wzdłuż krawędzi netto od wybranych narożników do środka użytku.
+
+    E1 (podpowiedź): długość kreski jest automatycznie obcinana do połowy szerokości/wysokości użytka.
+    H-34: kreski leżą na linii cięcia, nad grafiką użytku.
+    """
+    x0, y0, x1, y1 = net
+    lx, ly = min(length, (x1 - x0) / 2), min(length, (y1 - y0) / 2)
+    segments = []
+    for name in CORNERS:
+        if name not in corners or length <= 0:
+            continue
+        cx, dx = (x0, 1) if name[0] == 'L' else (x1, -1)
+        cy, dy = (y0, 1) if name[1] == 'G' else (y1, -1)
+        segments += [((cx, cy), (cx + dx * lx, cy)), ((cx, cy), (cx, cy + dy * ly))]
+    return segments
+
+
+def center_segments(net: Rect, start: float, lp: float, gd: float,
+                    sheet_w: float, sheet_h: float) -> list[Segment]:
+    """„Zaznacz środek netto” (E1). H-35: kreski w połowie każdej krawędzi netto, na zewnątrz użytku,
+    o tym samym odstępie i długościach co znaczniki cięcia (LP przy bokach, GD u góry i u dołu)."""
+    x0, y0, x1, y1 = net
+    mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+    segments = []
+    for cx, d in ((x0, -1), (x1, 1)):
+        a, b = cx + d * start, cx + d * (start + lp)
+        if lp > 0 and min(a, b) >= 0 and max(a, b) <= sheet_w:
+            segments.append(((a, my), (b, my)))
+    for cy, d in ((y0, -1), (y1, 1)):
+        a, b = cy + d * start, cy + d * (start + gd)
+        if gd > 0 and min(a, b) >= 0 and max(a, b) <= sheet_h:
+            segments.append(((mx, a), (mx, b)))
+    return segments
+
+
+MARK_COLORS = {'Czarny (dotychczasowy)': (0, 0, 0), 'K 100 %': (0, 0, 0, 1),
+               'Rejestracyjny (100 % CMYK)': (1, 1, 1, 1)}
+
+
 def gross_mark_segments(gross: Rect, lp: float, gd: float) -> list[Segment]:
     """Znaczniki brutto (H-29): z każdego narożnika brutto na zewnątrz — LP poziomo i GD pionowo."""
     x0, y0, x1, y1 = gross

@@ -96,6 +96,20 @@ class Settings:
     mark_offset: float = 0.8      # mm: odstęp znaczników cięcia od krawędzi spadu
     mark_length: float = 3.0      # mm: długość kreski znacznika cięcia
     mark_width_pt: float = 0.25   # pt: grubość kreski znacznika cięcia
+    # Pełne okno „Znaczniki netto” (marks.py, H-34, H-35); domyślnie wynik jak dotąd.
+    mark_gd_eq_lp: bool = True    # GD = LP (mark_length dotyczy obu)
+    mark_length_gd: float = 3.0   # mm: kreski pionowe, gdy GD ≠ LP
+    mark_pages: str = 'Wszystkie'  # Wszystkie | Nieparzyste | Parzyste (strony pliku wynikowego)
+    mark_first_sheet: bool = False
+    mark_color: str = 'Czarny (dotychczasowy)'  # zob. marks.MARK_COLORS
+    mark_skip_uses: bool = False  # nie rysuj kresek na brutto sąsiednich użytków
+    mark_corners_on: bool = False  # zaznaczaj narożniki (kreski na linii cięcia, do środka użytku)
+    mark_corner_len: float = 5.0  # mm, obcinane do połowy wymiaru użytku
+    mark_corner_lg: bool = True
+    mark_corner_pg: bool = True
+    mark_corner_ld: bool = True
+    mark_corner_pd: bool = True
+    mark_center: bool = False     # zaznacz środek netto
     gutter_on: bool = False       # wycinka środkowa
     gutter_v: float = 0.0         # mm: szerokość wycinki pionowej (parzysta liczba kolumn)
     gutter_h: float = 0.0         # mm: szerokość wycinki poziomej (parzysta liczba wierszy)
@@ -316,6 +330,15 @@ def validate(settings: Settings):
         value = getattr(settings, key)
         if not isinstance(value, str) or len(value) > 200 or any(ord(c) < 32 for c in value):
             raise ValueError('Tekst opisu: do 200 znaków, bez znaków sterujących')
+    if settings.mark_pages not in ('Wszystkie', 'Nieparzyste', 'Parzyste'):
+        raise ValueError('Znaczniki cięcia: strony wszystkie, nieparzyste albo parzyste')
+    if settings.mark_color not in marks_rules.MARK_COLORS:
+        raise ValueError(f'Kolor znaczników cięcia: {", ".join(marks_rules.MARK_COLORS)}')
+    for key, low, high, label in (('mark_length_gd', 0.1, 50, 'Długość GD znacznika cięcia [mm]'),
+                                  ('mark_corner_len', 0.1, 500, 'Długość kreski narożnej [mm]')):
+        value = getattr(settings, key)
+        if type(value) not in (int, float) or not isfinite(value) or not low <= value <= high:
+            raise ValueError(f'{label}: dozwolone {low:g}–{high:g}')
     for key, low, high, label in (('mark_offset', 0, 50, 'Odstęp znaczników od użytków [mm]'),
                                   ('mark_length', 0.1, 50, 'Długość znacznika cięcia [mm]'),
                                   ('mark_width_pt', 0.05, 5, 'Grubość znacznika cięcia [pt]'),
@@ -900,25 +923,33 @@ def overlapping_uses(side: SheetSide, s: Settings) -> list[tuple[int, int]]:
     return result
 
 
-def _draw_marks(page: fitz.Page, slot: Slot, s: Settings):
+def cut_marks_apply(s: Settings, page_number: int, sheet_number: int) -> bool:
+    """Znaczniki cięcia na tej stronie pliku wynikowego? (E1: strony wszystkie/nieparzyste/parzyste, pierwszy arkusz)."""
+    return (s.crop_marks and marks_rules.page_selected(page_number, s.mark_pages)
+            and (not s.mark_first_sheet or sheet_number == 1))
+
+
+def _draw_marks(page: fitz.Page, slot: Slot, s: Settings, blockers=()):
     """Create slim vector trim marks separated from bleed when space permits."""
-    x, y, w, h = slot.x, slot.y, slot.w, slot.h
+    net = (slot.x, slot.y, slot.x + slot.w, slot.y + slot.h)
     # Do not print black into bleed. Each mark begins `mark_offset` (default 0.8 mm) after bleed.
-    offset = bleed_for(s) + s.mark_offset
-    length = s.mark_length
-    width = s.mark_width_pt
-    for cx in (x, x+w):
-        direction = -1 if cx == x else 1
-        a, b = cx+direction*offset, cx+direction*(offset+length)
-        if min(a, b) >= 0 and max(a, b) <= s.sheet_w:
-            for yy in (y, y+h):
-                page.draw_line((pt(a), pt(yy)), (pt(b), pt(yy)), color=(0,0,0), width=width)
-    for cy in (y, y+h):
-        direction = -1 if cy == y else 1
-        a, b = cy+direction*offset, cy+direction*(offset+length)
-        if min(a, b) >= 0 and max(a, b) <= s.sheet_h:
-            for xx in (x, x+w):
-                page.draw_line((pt(xx), pt(a)), (pt(xx), pt(b)), color=(0,0,0), width=width)
+    start = bleed_for(s) + s.mark_offset
+    lp = s.mark_length
+    gd = s.mark_length if s.mark_gd_eq_lp else s.mark_length_gd
+    color = marks_rules.MARK_COLORS[s.mark_color]
+    sheet = (0.0, 0.0, s.sheet_w, s.sheet_h)
+    segments = marks_rules.cut_mark_segments(net, start, lp, gd, s.sheet_w, s.sheet_h)
+    if s.mark_center:
+        segments += marks_rules.center_segments(net, start, lp, gd, s.sheet_w, s.sheet_h)
+    for segment in segments:
+        # opcjonalnie: bez kresek na brutto sąsiednich użytków (pozostałe części kreski zostają)
+        for (x0, y0), (x1, y1) in (marks_rules.clip_segment(segment, blockers, sheet) if blockers else [segment]):
+            page.draw_line((pt(x0), pt(y0)), (pt(x1), pt(y1)), color=color, width=s.mark_width_pt)
+    if s.mark_corners_on:
+        corners = {name for name, on in zip(marks_rules.CORNERS, (s.mark_corner_lg, s.mark_corner_pg,
+                                                                  s.mark_corner_ld, s.mark_corner_pd)) if on}
+        for (x0, y0), (x1, y1) in marks_rules.corner_segments(net, s.mark_corner_len, corners):
+            page.draw_line((pt(x0), pt(y0)), (pt(x1), pt(y1)), color=color, width=s.mark_width_pt)
 
 
 def gutter_mark_lines(s: Settings) -> list[tuple[tuple[float, float], tuple[float, float]]]:
@@ -1167,11 +1198,13 @@ def render_side(side: SheetSide, sources: dict[str, fitz.Document], s: Settings,
                 output_name: str | None = 'montaz.pdf') -> fitz.Document:
     out = destination if destination is not None else fitz.open()
     target = out.new_page(width=pt(s.sheet_w), height=pt(s.sheet_h))
+    marks_here = cut_marks_apply(s, target.number + 1, side.sheet_number)
+    blockers = _gross_rects(side, s, placed_only=True) if marks_here and s.mark_skip_uses else ()
     for item in side.placements:
         if item.source is not None:
             _place_pdf(target, item.source, item.slot, s, sources, offsets)
-        if s.crop_marks and item.source is not None:
-            _draw_marks(target, item.slot, s)
+        if marks_here and item.source is not None:
+            _draw_marks(target, item.slot, s, blockers)
         if s.show_page_labels:
             txt = f'{item.source.index+1}  ' if item.source else 'PUSTA  '
             target.insert_text((pt(item.slot.x+1), pt(item.slot.y+item.slot.h-1)),

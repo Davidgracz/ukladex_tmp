@@ -74,7 +74,7 @@ szerokość wycinki ≥ 2 × odstęp znaczników od użytków (i tylko dla spadu
 
 | Znacznik oryginału | Studio |
 |---|---|
-| Netto (N) | częściowo — linie cięcia z parametrami: odstęp od spadu, długość, grubość [pt]; skrót **N**; bez wyboru narożników i stron parzystych/nieparzystych |
+| Netto (N) | **jest** — znaczniki cięcia: odstęp od spadu, długości LP i GD (przełącznik GD=LP), grubość [pt], kolor (czarny jak dotąd / K 100 % / rejestracyjny), strony wszystkie/nieparzyste/parzyste, tylko pierwszy arkusz, „zaznaczaj narożniki” LG/PG/LD/PD (kreska obcinana do ½ wymiaru użytku), „zaznacz środek netto”, opcja Studio: bez kresek na sąsiednich użytkach; skrót **N**; bez dowolnego koloru z palety |
 | Wycinka (W) | **nowe** — szerokość pionowa/pozioma, tylko przy parzystej liczbie kolumn/wierszy (inaczej uwaga w preflight i na pasku stanu), znacznik w osi o długości X albo przez całe pole zadruku, grubość [pt]; skrót **W**; bez paska kontrolnego i przycisków „Oblicz” |
 | Docięcie TrimBox (T) | **nowe** — włos [pt] z lewej na stronach parzystych, z prawej na nieparzystych; skrót **T** |
 | Marginesy (M) | częściowo — tylko „odstęp znaczników od użytków” (w parametrach linii cięcia); bez apli i reguły spadów przy wycince |
@@ -149,6 +149,8 @@ Wariant jak w oryginale (bez zmiany skali grafiki): „Dodaj spady” z odległo
 | H-31 | Opis: jedna linia nad siatką (krawędź górna) i/lub obrócona przy lewej krawędzi, czytana od dołu; stopień pisma maleje do 6 pt, potem opis jest pomijany z uwagą; numeracja rzymska dotyczy strony arkusza. |
 | H-32 | Pasek kontroli: kostki z kolorem tworzą sekwencję powtarzaną na całej długości (tyle całych kostek, ile się mieści); „ilość stref” > 0 = tyle powtórzeń sekwencji; domyślne kolory K1–K12 nasze (C, M, Y, K, CM, CY, MY, CMY, 50 % C/M/Y/K). Pasek z PDF — jedna kopia w naturalnym rozmiarze. |
 | H-33 | Pasek u góry nad znacznikami cięcia, u dołu pod nimi (odsunięcie od nich), na wycince poziomej w jej osi (gdy wycinka ≥ kostka + 2 × odsunięcie); długość liczona od pola zadruku (szerokość arkusza − 2 × margines X); brak miejsca = uwaga, pasek nie jest rysowany. |
+| H-34 | „Zaznaczaj narożniki”: kreski leżą na linii cięcia (krawędź netto), od narożnika do środka użytku, nad grafiką; długość obcinana do ½ szerokości/wysokości (to z podpowiedzi oryginału). |
+| H-35 | „Zaznacz środek netto”: kreski w połowie każdej krawędzi netto, na zewnątrz, z tym samym odstępem i długościami LP/GD co znaczniki cięcia. |
 | H-28 | „Wypełnij ze spadem”: skala = max(brutto/grafika) w obu osiach; spad zawsze z grafiki (ewentualny spad w źródle poza TrimBox jest pomijany); nadmiar przycinany do komórki brutto. |
 | — | „Usuń zaznaczone wiersze” w Studio = rola Pomiń (strona zostaje w pliku i może wrócić). |
 | — | „Wykonaj tylko aktywny arkusz” w trybie dwustronnym obejmuje recto i verso tego arkusza. |
