@@ -107,6 +107,36 @@ class Settings:
     # Skalowanie z docinaniem (whitecrop.py): białe marginesy źródła nie są częścią grafiki.
     white_trim: bool = False      # przytnij białe marginesy wokół grafiki źródła przed skalowaniem
     white_level: int = 250        # próg bieli 1–255 (piksel jaśniejszy = biały)
+    # Znaczniki brutto (B), pasery (P) i opis impozycji (O) — marks.py, H-29…H-31.
+    gross_marks: bool = False
+    gross_mark_lp: float = 3.0    # mm: kreska pozioma
+    gross_mark_gd: float = 3.0    # mm: kreska pionowa
+    gross_mark_pt: float = 0.25
+    gross_mark_pages: str = 'Wszystkie'  # Wszystkie | Nieparzyste | Parzyste
+    gross_first_sheet: bool = False
+    reg_marks: bool = False
+    reg_variant: int = 1          # 1 = okrąg z krzyżem, 2 = dwa okręgi z krzyżem
+    reg_diameter: float = 5.0
+    reg_pt: float = 0.25
+    reg_long: int = 1             # liczba paserów wzdłuż dłuższego boku arkusza
+    reg_short: int = 1            # … wzdłuż krótszego boku
+    reg_offset: float = 0.0       # mm od brutto użytków; 0 = automatycznie
+    reg_edges_only: bool = False
+    reg_beside_corners: bool = False
+    slug_on: bool = False
+    slug_file: bool = True
+    slug_sheet: bool = True
+    slug_print_area: bool = False
+    slug_sizes: bool = True
+    slug_datetime: bool = True
+    slug_text: str = ''
+    slug_size: int = 10           # 10 | 12 | 14 pt (zmniejszany do 6 pt, gdy się nie mieści)
+    slug_font: str = 'Arial'      # Arial | Courier
+    slug_top: bool = True
+    slug_side: bool = False
+    slug_sheet_word: str = 'Arkusz'
+    slug_page_word: str = 'Strona'
+    slug_roman: bool = False
 
 
 FILL_GROSS = 'Wypełnij ze spadem'  # grafika pokrywa netto + spad; spad powstaje z grafiki, nadmiar jest docinany
@@ -225,6 +255,29 @@ def validate(settings: Settings):
                          'Dopasuj, Wypełnij albo Wypełnij ze spadem.')
     if type(settings.white_level) is not int or not 1 <= settings.white_level <= 255:
         raise ValueError('Próg bieli musi być liczbą całkowitą 1–255.')
+    for key, low, high, label in (('gross_mark_lp', 0, 50, 'Długość LP znacznika brutto [mm]'),
+                                  ('gross_mark_gd', 0, 50, 'Długość GD znacznika brutto [mm]'),
+                                  ('gross_mark_pt', 0.05, 5, 'Grubość znacznika brutto [pt]'),
+                                  ('reg_diameter', 1, 30, 'Średnica pasera [mm]'),
+                                  ('reg_pt', 0.05, 5, 'Grubość kreski pasera [pt]'),
+                                  ('reg_offset', 0, 100, 'Odsunięcie pasera od brutto [mm]')):
+        value = getattr(settings, key)
+        if type(value) not in (int, float) or not isfinite(value) or not low <= value <= high:
+            raise ValueError(f'{label}: dozwolone {low:g}–{high:g}')
+    if settings.gross_mark_pages not in ('Wszystkie', 'Nieparzyste', 'Parzyste'):
+        raise ValueError('Znaczniki brutto: strony wszystkie, nieparzyste albo parzyste')
+    for key, allowed, label in (('reg_variant', (1, 2), 'Wariant pasera'), ('reg_long', range(0, 21), 'Pasery na dłuższym boku'),
+                                ('reg_short', range(0, 21), 'Pasery na krótszym boku'),
+                                ('slug_size', (10, 12, 14), 'Stopień pisma opisu [pt]')):
+        value = getattr(settings, key)
+        if type(value) is not int or value not in allowed:
+            raise ValueError(f'{label}: niedozwolona wartość {value!r}')
+    if settings.slug_font not in ('Arial', 'Courier'):
+        raise ValueError('Krój pisma opisu: Arial albo Courier')
+    for key in ('slug_text', 'slug_sheet_word', 'slug_page_word'):
+        value = getattr(settings, key)
+        if not isinstance(value, str) or len(value) > 200 or any(ord(c) < 32 for c in value):
+            raise ValueError('Tekst opisu: do 200 znaków, bez znaków sterujących')
     for key, low, high, label in (('mark_offset', 0, 50, 'Odstęp znaczników od użytków [mm]'),
                                   ('mark_length', 0.1, 50, 'Długość znacznika cięcia [mm]'),
                                   ('mark_width_pt', 0.05, 5, 'Grubość znacznika cięcia [pt]'),
@@ -1072,7 +1125,8 @@ def _place_pdf(target: fitz.Page, p: SourcePage, slot: Slot, s: Settings,
 
 def render_side(side: SheetSide, sources: dict[str, fitz.Document], s: Settings,
                 destination: fitz.Document | None = None,
-                offsets: dict[str, tuple[float, float]] | None = None) -> fitz.Document:
+                offsets: dict[str, tuple[float, float]] | None = None,
+                output_name: str | None = 'montaz.pdf') -> fitz.Document:
     out = destination if destination is not None else fitz.open()
     target = out.new_page(width=pt(s.sheet_w), height=pt(s.sheet_h))
     for item in side.placements:
@@ -1086,7 +1140,120 @@ def render_side(side: SheetSide, sources: dict[str, fitz.Document], s: Settings,
                                txt, fontsize=6, color=(.3,.3,.3), overlay=True)
     for (x0, y0), (x1, y1) in gutter_mark_lines(s):
         target.draw_line((pt(x0), pt(y0)), (pt(x1), pt(y1)), color=(0, 0, 0), width=s.gutter_mark_pt)
+    draw_sheet_marks(target, side, s, output_name=output_name)
     return out
+
+
+REGISTRATION = (1, 1, 1, 1)   # 100 % wszystkich farb CMYK (H-30)
+
+
+def _gross_rects(side: SheetSide, s: Settings, placed_only: bool) -> list[tuple[float, float, float, float]]:
+    """Prostokąty brutto: tylko zajęte użytki albo cała siatka arkusza (także puste pola ostatniego arkusza)."""
+    b = bleed_for(s)
+    slots = [p.slot for p in side.placements if p.source is not None or not placed_only]
+    if not placed_only and s.mode != 'Broszura':
+        slots += list(geometry(s).slots)
+    return list(dict.fromkeys((sl.x - b, sl.y - b, sl.x + sl.w + b, sl.y + sl.h + b) for sl in slots))
+
+
+def _marks_extent(s: Settings) -> float:
+    """Jak daleko od brutto sięgają znaczniki cięcia (miejsce zajęte, którego nie zasłania opis)."""
+    return s.mark_offset + s.mark_length if s.crop_marks else 0.0
+
+
+def registration_offset(s: Settings) -> float:
+    return s.reg_offset if s.reg_offset > 0 else _marks_extent(s) + 1.0
+
+
+SLUG_FONTS = {'Arial': 'helv', 'Courier': 'cour'}
+
+
+def slug_layout(s: Settings, grid, text: str):
+    """Położenie opisu (H-31): lista (punkt bazowy mm, obrót, stopień pt); pusta, gdy opis się nie mieści."""
+    if not text or grid is None:
+        return []
+    font = fitz.Font(SLUG_FONTS[s.slug_font])
+    gap = 1.0
+    reserved = _marks_extent(s) + gap
+    placements = []
+    for where in (('top',) if s.slug_top else ()) + (('side',) if s.slug_side else ()):
+        band = grid[1] - reserved if where == 'top' else grid[0] - reserved
+        start = grid[0] if where == 'top' else grid[3]
+        length = s.sheet_w - grid[0] - gap if where == 'top' else grid[3] - gap
+        for size in range(s.slug_size, 5, -1):
+            height = mm(size) * 1.2
+            if band >= height and mm(font.text_length(text, fontsize=size)) <= length:
+                baseline = grid[1] - reserved - mm(size) * 0.25 if where == 'top' else grid[0] - reserved - mm(size) * 0.25
+                point = (start, baseline) if where == 'top' else (baseline, start)
+                placements.append((point, 0 if where == 'top' else 90, size))
+                break
+    return placements
+
+
+def _slug_for(side: SheetSide, s: Settings, output_name: str | None, when=None) -> str:
+    from datetime import datetime
+    gw, gh = gross_dimensions(s)
+    return marks_rules.slug_text(
+        file_name=output_name if s.slug_file else None,
+        sheet_number=side.sheet_number if s.slug_sheet else 0, side=side.side,
+        sheet_word=s.slug_sheet_word, page_word=s.slug_page_word, roman_pages=s.slug_roman,
+        print_area=(s.sheet_w - 2*s.margin_x, s.sheet_h - 2*s.margin_y) if s.slug_print_area else None,
+        sizes=(s.trim_w, s.trim_h, gw, gh, bleed_for(s)) if s.slug_sizes else None,
+        when=(when or datetime.now()) if s.slug_datetime else None, extra=s.slug_text)
+
+
+def draw_sheet_marks(target: fitz.Page, side: SheetSide, s: Settings, output_name: str | None = None, when=None):
+    """Znaczniki brutto, pasery i opis impozycji na stronie arkusza (wszystkie domyślnie wyłączone)."""
+    if not (s.gross_marks or s.reg_marks or s.slug_on) or not side.placements:
+        return
+    sheet = (0.0, 0.0, s.sheet_w, s.sheet_h)
+    all_gross = _gross_rects(side, s, placed_only=False)
+    grid = marks_rules.bounding(all_gross)
+    if s.gross_marks and marks_rules.page_selected(target.number + 1, s.gross_mark_pages) and (
+            not s.gross_first_sheet or side.sheet_number == 1):
+        placed = _gross_rects(side, s, placed_only=True)
+        for rect in placed:
+            for segment in marks_rules.gross_mark_segments(rect, s.gross_mark_lp, s.gross_mark_gd):
+                for (x0, y0), (x1, y1) in marks_rules.clip_segment(segment, placed, sheet):
+                    target.draw_line((pt(x0), pt(y0)), (pt(x1), pt(y1)), color=(0, 0, 0, 1), width=s.gross_mark_pt)
+    if s.reg_marks and grid is not None:
+        r = s.reg_diameter / 2
+        for cx, cy in marks_rules.registration_centres(grid, s.sheet_w, s.sheet_h, s.reg_diameter,
+                                                        registration_offset(s), s.reg_long, s.reg_short,
+                                                        s.reg_edges_only, s.reg_beside_corners):
+            if not marks_rules.registration_visible((cx, cy), s.reg_diameter, all_gross, s.sheet_w, s.sheet_h):
+                continue
+            shape = target.new_shape()
+            shape.draw_circle((pt(cx), pt(cy)), pt(r * (0.7 if s.reg_variant == 1 else 0.85)))
+            if s.reg_variant == 2:
+                shape.draw_circle((pt(cx), pt(cy)), pt(r * 0.45))
+            shape.draw_line((pt(cx - r), pt(cy)), (pt(cx + r), pt(cy)))
+            shape.draw_line((pt(cx), pt(cy - r)), (pt(cx), pt(cy + r)))
+            shape.finish(color=REGISTRATION, fill=None, width=s.reg_pt)
+            shape.commit()
+    if s.slug_on:
+        text = _slug_for(side, s, output_name, when)
+        font = fitz.Font(SLUG_FONTS[s.slug_font])
+        for (x, y), angle, size in slug_layout(s, grid, text):
+            writer = fitz.TextWriter(target.rect)
+            writer.append((pt(x), pt(y)), text, font=font, fontsize=size)
+            morph = (fitz.Point(pt(x), pt(y)), fitz.Matrix(angle)) if angle else None  # od dołu do góry
+            writer.write_text(target, color=(0, 0, 0, 1), morph=morph)
+
+
+def slug_notes(s: Settings) -> list[str]:
+    """Uwaga, gdy opis jest włączony, ale nie mieści się przy obecnych ustawieniach (jak komunikat Imp4)."""
+    if not s.slug_on or s.mode == 'Broszura':
+        return []
+    if not (s.slug_top or s.slug_side):
+        return ['Opis arkusza włączony, ale nie wybrano położenia (krawędź górna / boczna).']
+    g = geometry(s)
+    b = bleed_for(s)
+    grid = marks_rules.bounding([(sl.x - b, sl.y - b, sl.x + sl.w + b, sl.y + sl.h + b) for sl in g.slots])
+    sample = _slug_for(SheetSide(1, 0, ()), s, 'montaz.pdf')
+    if not slug_layout(s, grid, sample):
+        return ['Przy obecnych ustawieniach opis arkusza się nie mieści (za mały margines nad lub obok użytków).']
+    return []
 
 
 def open_sources(jobs: list[Job]) -> dict[str, fitz.Document]:
@@ -1163,7 +1330,7 @@ def export_pdf(project: Project, output: str, metadata: dict[str, str] | None = 
                                  f'brakuje {audit.shortage}. Przywróć przypisania lub zamień użytki.')
         count = 0
         for side in select_sides(project_sides(project, sources), run_mode, active_sheet):
-            render_side(side, sources, project.settings, out, offsets)
+            render_side(side, sources, project.settings, out, offsets, Path(output).name)
             count += 1
         if count == 0:
             raise ValueError('Brak stron do montażu' if run_mode == RUN_ALL

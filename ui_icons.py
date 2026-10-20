@@ -92,6 +92,15 @@ def draw(name, size=30):
             d.rectangle((x0*u, 6*u, (x0+4.5)*u, 24*u), fill=BACK, outline=DARK, width=SCALE)
         d.line([(15*u, 1*u), (15*u, 7*u)], fill=INK, width=SCALE*2)
         d.line([(15*u, 23*u), (15*u, 29*u)], fill=INK, width=SCALE*2)
+    elif name == 'gross':  # użytek ze spadem i kreski na przedłużeniu krawędzi brutto
+        d.rectangle((8*u, 8*u, 22*u, 22*u), fill=BACK, outline=DARK, width=SCALE)
+        for x, y, dx, dy in ((8, 8, -1, -1), (22, 8, 1, -1), (8, 22, -1, 1), (22, 22, 1, 1)):
+            d.line([(x*u, y*u), ((x + 6*dx)*u, y*u)], fill=INK, width=SCALE*2)
+            d.line([(x*u, y*u), (x*u, (y + 6*dy)*u)], fill=INK, width=SCALE*2)
+    elif name == 'slug':  # linia tekstu nad arkuszem
+        _page(d, (4*u, 11*u, 26*u, 28*u), fold=False)
+        for x0, x1 in ((4, 12), (14, 20), (22, 26)):
+            d.rectangle((x0*u, 4*u, x1*u, 7*u), fill=INK)
     elif name == 'trimcrop':  # rozkładówka z włosowym przycięciem przy grzbiecie
         _page(d, (3*u, 5*u, 14.5*u, 25*u), fold=False)
         _page(d, (15.5*u, 5*u, 27*u, 25*u), fold=False)
