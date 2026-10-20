@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added `docs/PRZENIESIENIE.md` (setup on another computer: tools, GitHub, REA MCP, working rules, state, next steps) and
+  `scripts/imp4_resources.py` (reads UI texts of the original from .NET resources into a folder outside the repository;
+  refuses to write inside the repo). Test: `tests/test_imp4_resources_script.py`.
+
 - Cut marks (guillotine, N) now follow the full Imp4 "net size marks" window: separate LP/GD lengths (GD=LP switch),
   colour (previous black / K 100 % / registration), all/odd/even output pages, first sheet only, corner marks
   LG/PG/LD/PD (clamped to half the use), net centre marks, and an option to keep marks off neighbouring uses.
