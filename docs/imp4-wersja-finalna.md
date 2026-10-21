@@ -151,6 +151,7 @@ Wariant jak w oryginale (bez zmiany skali grafiki): „Dodaj spady” z odległo
 | H-33 | Pasek u góry nad znacznikami cięcia, u dołu pod nimi (odsunięcie od nich), na wycince poziomej w jej osi (gdy wycinka ≥ kostka + 2 × odsunięcie); długość liczona od pola zadruku (szerokość arkusza − 2 × margines X); brak miejsca = uwaga, pasek nie jest rysowany. |
 | H-34 | „Zaznaczaj narożniki”: kreski leżą na linii cięcia (krawędź netto), od narożnika do środka użytku, nad grafiką; długość obcinana do ½ szerokości/wysokości (to z podpowiedzi oryginału). |
 | H-35 | „Zaznacz środek netto”: kreski w połowie każdej krawędzi netto, na zewnątrz, z tym samym odstępem i długościami LP/GD co znaczniki cięcia. |
+| H-37 | „Obracaj strony do orientacji użytku” (rozszerzenie Studio): strona pozioma na pionowym użytku (i odwrotnie) dostaje dodatkowe +90° (tekst czytany od dołu do góry); prawie kwadratowe (różnica < 1 %) bez obrotu; w „Bez skalowania” strona obrócona o 90° też jest akceptowana; nie działa z „Kadruj 1:1” (jawny błąd). Każda strona wielostronicowego PDF jest skalowana osobno — mieszane formaty (A4/A3/A5/A6) trafiają na wspólny format użytku. |
 | H-28 | „Wypełnij ze spadem”: skala = max(brutto/grafika) w obu osiach; spad zawsze z grafiki (ewentualny spad w źródle poza TrimBox jest pomijany); nadmiar przycinany do komórki brutto. |
 | — | „Usuń zaznaczone wiersze” w Studio = rola Pomiń (strona zostaje w pliku i może wrócić). |
 | — | „Wykonaj tylko aktywny arkusz” w trybie dwustronnym obejmuje recto i verso tego arkusza. |

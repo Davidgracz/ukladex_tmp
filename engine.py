@@ -121,6 +121,7 @@ class Settings:
     # Skalowanie z docinaniem (whitecrop.py): białe marginesy źródła nie są częścią grafiki.
     white_trim: bool = False      # przytnij białe marginesy wokół grafiki źródła przed skalowaniem
     white_level: int = 250        # próg bieli 1–255 (piksel jaśniejszy = biały)
+    auto_orient: bool = False     # obracaj stronę o 90°, gdy jej orientacja różni się od użytku (H-37)
     # Znaczniki brutto (B), pasery (P) i opis impozycji (O) — marks.py, H-29…H-31.
     gross_marks: bool = False
     gross_mark_lp: float = 3.0    # mm: kreska pozioma
@@ -285,6 +286,9 @@ def validate(settings: Settings):
     if settings.white_trim and settings.scale_mode in ('Bez skalowania', 'Kadruj 1:1'):
         raise ValueError('Przycinanie białych marginesów działa tylko ze skalowaniem: '
                          'Dopasuj, Wypełnij albo Wypełnij ze spadem.')
+    if settings.auto_orient and settings.scale_mode == 'Kadruj 1:1':
+        raise ValueError('Obracanie stron do orientacji użytku nie działa z „Kadruj 1:1” — '
+                         'wybierz Bez skalowania, Dopasuj, Wypełnij albo Wypełnij ze spadem.')
     if type(settings.white_level) is not int or not 1 <= settings.white_level <= 255:
         raise ValueError('Próg bieli musi być liczbą całkowitą 1–255.')
     for key, low, high, label in (('gross_mark_lp', 0, 50, 'Długość LP znacznika brutto [mm]'),
@@ -1054,6 +1058,16 @@ def crop_centre(source_w: float, source_h: float, gross_w: float, gross_h: float
                          f'{source_w:.2f} × {source_h:.2f} mm przy X={x:g}, Y={y:g} mm.')
 
 
+def orientation_differs(w: float, h: float, target_w: float, target_h: float, tolerance: float = 0.01) -> bool:
+    """Czy strona i użytek mają różną orientację (pozioma/pionowa)? Prawie kwadratowe = bez obrotu (H-37)."""
+    def kind(a: float, b: float) -> int:
+        if abs(a - b) <= tolerance * max(a, b):
+            return 0
+        return 1 if a > b else -1
+    page, use = kind(w, h), kind(target_w, target_h)
+    return page != 0 and use != 0 and page != use
+
+
 def _place_pdf(target: fitz.Page, p: SourcePage, slot: Slot, s: Settings,
                sources: dict[str, fitz.Document],
                offsets: dict[str, tuple[float, float]] | None = None):
@@ -1070,9 +1084,10 @@ def _place_pdf(target: fitz.Page, p: SourcePage, slot: Slot, s: Settings,
                 f'{Path(p.path).name}, strona {p.index+1}: rzeczywisty oryginał '
                 f'{apparent_w:.2f} × {apparent_h:.2f} mm różni się od ustawionego '
                 f'{s.source_w:g} × {s.source_h:g} mm. Popraw rozmiar oryginału.')
-    if s.scale_mode == 'Bez skalowania' and (
-        abs(apparent_w-s.trim_w) > 0.5 or abs(apparent_h-s.trim_h) > 0.5
-    ):
+    fits = abs(apparent_w-s.trim_w) <= 0.5 and abs(apparent_h-s.trim_h) <= 0.5
+    if s.auto_orient:  # strona obrócona o 90° też pasuje (obrót nastąpi niżej)
+        fits = fits or (abs(apparent_h-s.trim_w) <= 0.5 and abs(apparent_w-s.trim_h) <= 0.5)
+    if s.scale_mode == 'Bez skalowania' and not fits:
         raise ValueError(
             f'{Path(p.path).name}, strona {p.index+1}: TrimBox {apparent_w:.2f} × '
             f'{apparent_h:.2f} mm nie odpowiada {s.trim_w:g} × {s.trim_h:g} mm. '
@@ -1119,6 +1134,11 @@ def _place_pdf(target: fitz.Page, p: SourcePage, slot: Slot, s: Settings,
     final_width = trim.width if angle in (0, 180) else trim.height
     final_height = trim.height if angle in (0, 180) else trim.width
     dest_w, dest_h = pt(slot.w), pt(slot.h)
+    if s.auto_orient and orientation_differs(final_width, final_height, dest_w, dest_h):
+        # Strona pozioma na pionowym użytku (lub odwrotnie): dodatkowe 90° (H-37), zamiast małej strony
+        # z białymi polami (Dopasuj) albo obcięcia połowy grafiki (Wypełnij).
+        angle = (angle + 90) % 360
+        final_width, final_height = final_height, final_width
     if s.scale_mode == FILL_GROSS:
         # Grafika pokrywa cały użytek brutto (netto + spad): spad powstaje z samej grafiki,
         # nadmiar jest docinany do komórki — bez białych krawędzi.

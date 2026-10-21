@@ -475,9 +475,12 @@ class App(tk.Tk):
         self.white_trim_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(g, text='przytnij białe marginesy źródła', variable=self.white_trim_var,
                         command=self.schedule_refresh).grid(row=0, column=1, sticky='w', padx=(8, 0))
-        ttk.Label(g, text='Kadruj 1:1 = wytnij środek oryginału bez skalowania.\n'
-                  'Wypełnij ze spadem = grafika pokrywa netto + spad (np. A4 → A6 + 1,5 mm), nadmiar docięty.',
-                  style='Caption.TLabel', justify='left').grid(row=1, column=0, columnspan=2, sticky='w', pady=(3, 0))
+        self.auto_orient_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(g, text='obracaj strony do orientacji użytku', variable=self.auto_orient_var,
+                        command=self.schedule_refresh).grid(row=1, column=1, sticky='nw', padx=(8, 0), pady=(3, 0))
+        ttk.Label(g, text='Kadruj 1:1 = środek oryginału bez skalowania.\n'
+                  'Wypełnij ze spadem = grafika pokrywa\nnetto + spad (np. A4 → A6 + 1,5 mm).',
+                  style='Caption.TLabel', justify='left').grid(row=1, column=0, sticky='w', pady=(3, 0))
         g = self._group(tab, 'Kadr wybranego PDF')
         ttk.Button(g, text='✂  Kadruj wybrany PDF\n(podgląd, przesunięcie X/Y)',
                    command=self.open_crop_editor).pack(fill='both', expand=True)
@@ -957,6 +960,7 @@ class App(tk.Tk):
         self.slug_var.set(s.slug_on)
         self.strip_var.set(s.strip_on)
         self.white_trim_var.set(s.white_trim)
+        self.auto_orient_var.set(s.auto_orient)
         self.mark_params = {key: getattr(s, key) for key in MARK_PARAMS}
         self._suspend_events=False
         self._render_jobs()
@@ -1027,7 +1031,7 @@ class App(tk.Tk):
                         gutter_on=self.gutter_var.get(), trim_crop=self.trimcrop_var.get(),
                         gross_marks=self.gross_var.get(), reg_marks=self.reg_var.get(), slug_on=self.slug_var.get(),
                         strip_on=self.strip_var.get(),
-                        white_trim=self.white_trim_var.get(),
+                        white_trim=self.white_trim_var.get(), auto_orient=self.auto_orient_var.get(),
                         **self.mark_params)
 
     def apply_preset(self):
