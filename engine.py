@@ -1645,6 +1645,68 @@ def open_sources(jobs: list[Job]) -> dict[str, fitz.Document]:
         raise
 
 
+CROP_NET = 'netto'
+CROP_GROSS = 'brutto'
+CROP_BLEED = 3.0   # „netto + 3 mm spad” (E1, okno korekty obszaru netto)
+
+
+def crop_output_name(path: str, area: str) -> str:
+    """Domyślna nazwa pliku po kadrowaniu: obok źródła, z dopiskiem _netto / _brutto (H-43)."""
+    source = Path(path)
+    return str(source.with_name(f'{source.stem}_{area}.pdf'))
+
+
+def crop_to_file(job: Job, output: str, area: str = CROP_NET, bleed: float = CROP_BLEED) -> tuple[int, int]:
+    """„Kadruj i zapisz do pliku” (E1/E2, H-43): nowy PDF, w którym każda strona ma rozmiar obszaru netto
+    (TrimBox) albo netto + spad z każdej strony; treść wstawiana wektorowo z przycięciem.
+
+    Uwzględnia korekty i zmiany rozmiaru stron z projektu (jak montaż). Grafiki poza stroną nie dorabia: brak spadu
+    w pliku zostaje białym spadem. Zwraca (liczba stron, liczba stron bez pełnego spadu). Plik źródłowy bez zmian.
+    """
+    if area not in (CROP_NET, CROP_GROSS):
+        raise ValueError('Kadrowanie: netto albo brutto')
+    if type(bleed) not in (int, float) or not isfinite(bleed) or not 0 <= bleed <= 50:
+        raise ValueError('Spad przy kadrowaniu: 0–50 mm')
+    if Path(output).resolve() == Path(job.path).resolve():
+        raise ValueError('Zapisz wynik do innego pliku niż źródłowy')
+    extra = pt(bleed) if area == CROP_GROSS else 0.0
+    sources = open_sources([Job(job.path, page_boxes=job.page_boxes, page_sizes=job.page_sizes)])
+    doc = sources[job.path]
+    out = fitz.open()
+    short = 0
+    try:
+        for index, page in enumerate(doc):
+            origin = fitz.Rect(page.cropbox).tl
+            to_page = (-origin.x, -origin.y, -origin.x, -origin.y)
+            trim = (fitz.Rect(page.trimbox) + to_page) * page.rotation_matrix
+            trim.normalize()
+            media = ((fitz.Rect(page.mediabox) & fitz.Rect(page.cropbox)) + to_page) * page.rotation_matrix
+            media.normalize()
+            wanted = fitz.Rect(trim.x0 - extra, trim.y0 - extra, trim.x1 + extra, trim.y1 + extra)
+            shown = wanted & media
+            if extra and not media.contains(wanted):
+                short += 1
+            target = out.new_page(width=wanted.width, height=wanted.height)
+            place = shown - (wanted.x0, wanted.y0, wanted.x0, wanted.y0)
+            clip = shown * page.derotation_matrix
+            clip.normalize()
+            target.show_pdf_page(place, doc, index, clip=clip, keep_proportion=False)
+            r = target.rect
+            target.set_trimbox(fitz.Rect(r.x0 + extra, r.y0 + extra, r.x1 - extra, r.y1 - extra))
+            target.set_bleedbox(r)
+        out.set_metadata({'title': f'{Path(job.path).stem} — kadrowanie {area}', 'creator': APP_TITLE})
+        Path(output).parent.mkdir(parents=True, exist_ok=True)
+        temporary = Path(output).with_name(Path(output).name + '.tmp')
+        out.save(str(temporary), garbage=3, deflate=True)
+        out.close()
+        temporary.replace(output)
+        return len(doc), short
+    finally:
+        if not out.is_closed:
+            out.close()
+        doc.close()
+
+
 # „Wykonaj impozycję” w Impozycjonerze 4: wszystkie arkusze, tylko aktywny albo wszystkie oprócz aktywnego.
 RUN_ALL = 'Wszystkie arkusze'
 RUN_ACTIVE = 'Tylko aktywny arkusz'
