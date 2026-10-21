@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Portable EXE for a USB stick: `BUILD_EXE_WINDOWS.bat` runs the tests first, builds `dist\Impozycjoner-Studio` with a
+  generated icon (`scripts/make_icon.py`), adds `PORTABLE.txt`, a `dane` data folder and examples, checks the built
+  EXE with `--self-test` (`selftest.py`, `scripts/check_exe.py`) and zips it; `jedenplik` also builds a single-file EXE.
+  New `user_data.py`: with `PORTABLE.txt` next to the program, job templates and machine profiles are stored in `dane`
+  next to it instead of `%APPDATA%`. Tests: `tests/test_portable.py`.
+
 - Added `docs/PRZENIESIENIE.md` (setup on another computer: tools, GitHub, REA MCP, working rules, state, next steps) and
   `scripts/imp4_resources.py` (reads UI texts of the original from .NET resources into a folder outside the repository;
   refuses to write inside the repo). Test: `tests/test_imp4_resources_script.py`.
