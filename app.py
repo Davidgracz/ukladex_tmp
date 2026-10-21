@@ -1141,9 +1141,14 @@ class App(tk.Tk):
                 if role != ROLE_SKIP:
                     total += 1
                 tags = (f'job{i}', 'skip') if role == ROLE_SKIP else (f'job{i}',)
+                mark = ''
+                corrected = j.page_boxes.get(str(page + 1))
+                if corrected:  # rozmiar netto skorygowany w projekcie (TrimBox z pliku bez zmian)
+                    w, h, mark = corrected[2], corrected[3], '*'
                 self.files.insert('', 'end', iid=f'{i}:{page}',
                                   values=(total if role != ROLE_SKIP else '–', page+1, name,
-                                          f'{w:.1f}'.rstrip('0').rstrip('.'), f'{h:.1f}'.rstrip('0').rstrip('.'),
+                                          f'{w:.1f}'.rstrip('0').rstrip('.') + mark,
+                                          f'{h:.1f}'.rstrip('0').rstrip('.') + mark,
                                           j.copies, role), tags=tags)
         self.pages_title.set(f'Stron: {total} • Plików: {len(self.project.jobs)}')
         if selected is not None and f'{selected}:0' in self.files.get_children():
@@ -1781,6 +1786,7 @@ class App(tk.Tk):
         menu.add_command(label='Odwróć zaznaczenie', command=lambda: self._select_rows(table_actions.SELECT_INVERT))
         menu.add_separator()
         menu.add_command(label='Znajdź pierwszy arkusz z tą stroną', command=self.find_first_sheet)
+        menu.add_command(label='Koryguj rozmiar strony (obszar netto)…', command=self.correct_page_size)
         menu.add_command(label='Ustaw rozmiar użytka równy rozmiarom zaznaczonej strony', command=self.use_page_size)
         menu.add_separator()
         menu.add_command(label='Pomiń zaznaczone strony w impozycji', command=lambda: self._skip_selected(True))
@@ -1810,6 +1816,19 @@ class App(tk.Tk):
             return
         self.go_to_side(index)
 
+    def correct_page_size(self):
+        """Korekta rozmiaru i położenia netto strony (jak „Koryguj odczytane rozmiary…” w Imp4)."""
+        selection = self.files.selection()
+        if not selection:
+            messagebox.showinfo('Korekta rozmiaru', 'Zaznacz stronę w tabeli.', parent=self)
+            return
+        job, page = table_actions.parse_row(selection[0])
+        try:
+            from page_box_ui import PageBoxDialog
+            PageBoxDialog(self, job, page)
+        except Exception as exc:
+            messagebox.showerror('Korekta rozmiaru', str(exc), parent=self)
+
     def use_page_size(self):
         selection = self.files.selection()
         if not selection:
@@ -1820,6 +1839,9 @@ class App(tk.Tk):
             messagebox.showerror('Rozmiar użytka', 'Nie można odczytać rozmiaru strony.', parent=self)
             return
         w, h = (round(v, 2) for v in sizes[page])
+        corrected = self.project.jobs[job].page_boxes.get(str(page + 1))
+        if corrected:  # rozmiar po korekcie netto ma pierwszeństwo przed TrimBox z pliku
+            w, h = round(corrected[2], 2), round(corrected[3], 2)
         try:  # spad zostaje taki sam, brutto idzie za netto (jak przy presetach formatu)
             gap = max(0, (float(self.variables['gross_w'].get().replace(',', '.')) -
                           float(self.variables['trim_w'].get().replace(',', '.'))) / 2)

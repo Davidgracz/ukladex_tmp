@@ -60,6 +60,8 @@ class Job:
     page_roles: dict[str, str] = field(default_factory=dict)  # 1-based page numbers
     crop_x: float = 0.0  # mm: desired crop-centre displacement in source visual X
     crop_y: float = 0.0  # mm: desired crop-centre displacement in source visual Y
+    # Korekta rozmiaru/położenia netto stron (page_boxes.py): {"nr strony": [z lewej, od góry, szer., wys.] mm}
+    page_boxes: dict[str, list[float]] = field(default_factory=dict)
 
     def role_for(self, zero_based_page: int) -> str:
         return self.page_roles.get(str(zero_based_page + 1), self.role)
@@ -1429,6 +1431,37 @@ def slug_notes(s: Settings) -> list[str]:
     return []
 
 
+def visible_box_to_trimbox(page: fitz.Page, box) -> fitz.Rect:
+    """Ramka (mm, widoczna strona po /Rotate, od lewego górnego rogu) → TrimBox w układzie MuPDF strony."""
+    left, top, width, height = box
+    visible = fitz.Rect(pt(left), pt(top), pt(left + width), pt(top + height))
+    unrotated = visible * page.derotation_matrix
+    unrotated.normalize()
+    origin = fitz.Rect(page.cropbox).tl
+    return unrotated + (origin.x, origin.y, origin.x, origin.y)
+
+
+def apply_page_boxes(jobs: list[Job], sources: dict[str, fitz.Document]):
+    """Korekty rozmiaru stron z projektu (H-38): TrimBox ustawiany tylko w pamięci — plik na dysku bez zmian."""
+    seen: dict[str, dict] = {}
+    for job in jobs:
+        boxes = job.page_boxes or {}
+        if job.path in seen and seen[job.path] != boxes:
+            raise ValueError(f'{Path(job.path).name}: ten sam PDF ma różne korekty rozmiaru stron w kilku pozycjach listy')
+        seen[job.path] = boxes
+    import page_boxes as pb
+    for path, boxes in seen.items():
+        doc = sources[path]
+        for key, box in boxes.items():
+            number = int(key)
+            if not 1 <= number <= len(doc):
+                raise ValueError(f'{Path(path).name}: korekta dla nieistniejącej strony {key}')
+            page = doc[number - 1]
+            pb.check_box(box, mm(page.rect.width), mm(page.rect.height))
+            trim = visible_box_to_trimbox(page, box) & fitz.Rect(page.mediabox)
+            page.set_trimbox(trim)
+
+
 def open_sources(jobs: list[Job]) -> dict[str, fitz.Document]:
     sources = {}
     try:
@@ -1444,6 +1477,7 @@ def open_sources(jobs: list[Job]) -> dict[str, fitz.Document]:
                     doc.close()
                     raise ValueError(f'Nieobsługiwany lub zabezpieczony PDF: {job.path}')
                 sources[job.path] = doc
+        apply_page_boxes(jobs, sources)
         return sources
     except Exception:
         for doc in sources.values():
@@ -1618,9 +1652,12 @@ def save_project(project: Project, path: str):
             file_path = str(f.relative_to(root))
         except ValueError:
             file_path = str(f)
-        jobs.append({'path':file_path,'copies':j.copies,
-                     'role':j.role,'page_roles':j.page_roles,
-                     'crop_x':j.crop_x,'crop_y':j.crop_y})
+        entry = {'path':file_path,'copies':j.copies,
+                 'role':j.role,'page_roles':j.page_roles,
+                 'crop_x':j.crop_x,'crop_y':j.crop_y}
+        if j.page_boxes:  # pole opcjonalne: projekty bez korekt zapisują się jak dotąd
+            entry['page_boxes'] = j.page_boxes
+        jobs.append(entry)
     relative_overrides = {}
     for key, entry in project.overrides.items():
         copied = dict(entry)
@@ -1646,7 +1683,8 @@ def load_project(path: str) -> Project:
     jobs = [Job(path=str((base / j['path']).resolve()) if not Path(j['path']).is_absolute()
                 else str(Path(j['path']).resolve()), copies=int(j['copies']),
                 role=j.get('role', ROLE_AUTO), page_roles=dict(j.get('page_roles', {})),
-                crop_x=float(j.get('crop_x', 0)), crop_y=float(j.get('crop_y', 0)))
+                crop_x=float(j.get('crop_x', 0)), crop_y=float(j.get('crop_y', 0)),
+                page_boxes={str(k): [float(v) for v in box] for k, box in dict(j.get('page_boxes', {})).items()})
             for j in data.get('jobs', [])]
     overrides = data.get('overrides', {})
     if not isinstance(overrides, dict):

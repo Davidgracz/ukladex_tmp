@@ -50,6 +50,7 @@ Legenda kolumny „Studio 0.4.1”: **jest** · **częściowo** · **brak** · *
 | Znajdź pierwszy arkusz z tą stroną | **nowe** |
 | Ustaw rozmiar użytka równy rozmiarom zaznaczonej strony | **nowe** (spad bez zmian, brutto idzie za netto) |
 | Ustal rozmiar użytka na największą szerokość i wysokość w tabeli | brak |
+| Koryguj odczytane rozmiary… (okno „Korekta położenia i rozmiaru obszaru netto”) | **nowe** — „Koryguj rozmiar strony (obszar netto)…”: podgląd z ramką do przesuwania, H × V i położenie, zakres ta strona / wszystkie / nieparzyste / parzyste, w pliku lub całej tabeli, tylko strony o tym samym rozmiarze, przywróć z pliku, ustaw rozmiar użytka; rozmiary skorygowane oznaczone w tabeli gwiazdką |
 | Usuń zaznaczone wiersze (strony) | **nowe** jako „Pomiń zaznaczone strony” / „Przywróć” (rola Pomiń; PDF bez zmian) |
 | Usuń wszystkie wiersze z pliku | **nowe** w menu (było: Delete) |
 | Wstaw wakat przed/po/tutaj, usuń dodane wakaty | brak |
@@ -152,6 +153,7 @@ Wariant jak w oryginale (bez zmiany skali grafiki): „Dodaj spady” z odległo
 | H-34 | „Zaznaczaj narożniki”: kreski leżą na linii cięcia (krawędź netto), od narożnika do środka użytku, nad grafiką; długość obcinana do ½ szerokości/wysokości (to z podpowiedzi oryginału). |
 | H-35 | „Zaznacz środek netto”: kreski w połowie każdej krawędzi netto, na zewnątrz, z tym samym odstępem i długościami LP/GD co znaczniki cięcia. |
 | H-37 | „Obracaj strony do orientacji użytku” (rozszerzenie Studio): strona pozioma na pionowym użytku (i odwrotnie) dostaje dodatkowe +90° (tekst czytany od dołu do góry); prawie kwadratowe (różnica < 1 %) bez obrotu; w „Bez skalowania” strona obrócona o 90° też jest akceptowana; nie działa z „Kadruj 1:1” (jawny błąd). Każda strona wielostronicowego PDF jest skalowana osobno — mieszane formaty (A4/A3/A5/A6) trafiają na wspólny format użytku. |
+| H-38 | Korekta rozmiaru strony (tabela stron → „Koryguj rozmiar strony…”, odpowiednik „Koryguj odczytane rozmiary…”): ramka netto w mm w widocznej orientacji strony, od lewego górnego rogu; „ten sam rozmiar” = obie krawędzie strony różnią się ≤ 0,5 mm; korekta zapisana w projekcie (`page_boxes` przy pliku), TrimBox ustawiany tylko w pamięci przy otwieraniu PDF. Bez „kadruj i zapisz do pliku” i bez zmiany rozmiaru ramki myszą (tylko przesuwanie). |
 | H-28 | „Wypełnij ze spadem”: skala = max(brutto/grafika) w obu osiach; spad zawsze z grafiki (ewentualny spad w źródle poza TrimBox jest pomijany); nadmiar przycinany do komórki brutto. |
 | — | „Usuń zaznaczone wiersze” w Studio = rola Pomiń (strona zostaje w pliku i może wrócić). |
 | — | „Wykonaj tylko aktywny arkusz” w trybie dwustronnym obejmuje recto i verso tego arkusza. |
