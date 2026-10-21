@@ -36,7 +36,7 @@ _INT_RANGES = {'columns': (0, 500), 'rows': (0, 500)}
 _CHOICES = {'mode': MODES, 'rotation': ROTATIONS, 'scale_mode': SCALE_MODES}
 _BOOLS = ('auto_gross', 'crop_marks', 'show_page_labels')
 # Pola dodane później: opcjonalne, żeby starsze szablony użytkownika nadal się wczytywały.
-_OPTIONAL_BOOLS = {'white_trim': False}
+_OPTIONAL_BOOLS = {'white_trim': False, 'auto_orient': False}
 
 FIELDS = tuple(_MM_RANGES) + tuple(_INT_RANGES) + tuple(_CHOICES) + _BOOLS + tuple(_OPTIONAL_BOOLS)
 
@@ -100,7 +100,7 @@ def _machine(value) -> str | None:
 
 def _sheet_job(name: str, trim_w: float, trim_h: float, mode: str, *,
                bleed: float = 2.0, scale_mode: str = 'Bez skalowania',
-               white_trim: bool = False) -> tuple[str, dict]:
+               white_trim: bool = False, auto_orient: bool = False) -> tuple[str, dict]:
     """Punkt startowy: SRA3 450 × 320 mm, marginesy 6 mm, odstępy 5 mm, znaczniki cięcia."""
     return name, {
         'settings': {
@@ -112,6 +112,7 @@ def _sheet_job(name: str, trim_w: float, trim_h: float, mode: str, *,
             'rotation': 'Auto', 'columns': 0, 'rows': 0,
             'mode': mode, 'scale_mode': scale_mode,
             'crop_marks': True, 'show_page_labels': False, 'white_trim': white_trim,
+            'auto_orient': auto_orient,
         },
         'machine': None,
     }
@@ -125,7 +126,11 @@ BUILTIN: dict[str, dict] = dict([
     _sheet_job('Wizytówka 85×55 — SRA3 — dwustronnie', 85, 55, 'Dwustronnie'),
     _sheet_job('Ulotka A6 — SRA3 — dwustronnie', 105, 148, 'Dwustronnie'),
     _sheet_job('Ulotka A6 + 1,5 mm z A4 (bez białych marginesów) — SRA3',
-               105, 148, 'Jednostronnie', bleed=1.5, scale_mode='Wypełnij ze spadem', white_trim=True),
+               105, 148, 'Jednostronnie', bleed=1.5, scale_mode='Wypełnij ze spadem', white_trim=True,
+               auto_orient=True),
+    _sheet_job('Ulotka A5 + 1,5 mm z dowolnego PDF (mieszane formaty) — SRA3',
+               148, 210, 'Jednostronnie', bleed=1.5, scale_mode='Wypełnij ze spadem', white_trim=True,
+               auto_orient=True),
     _sheet_job('Ulotka DL — SRA3 — dwustronnie', 99, 210, 'Dwustronnie'),
     _sheet_job('Ulotka A5 — SRA3 — dwustronnie', 148, 210, 'Dwustronnie'),
 ])

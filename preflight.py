@@ -11,7 +11,7 @@ import json
 
 import pymupdf as fitz
 
-from engine import Job, Project, Settings, mm, media_rect, open_sources, scaling_layout, validate, bleed_for, gross_dimensions, validate_job_roles, _duplex_pairs, project_sides, overlapping_uses, plan_sides, crop_offsets, crop_centre, ROLE_AUTO, ROLE_SKIP, economic_report, gutter_notes, FILL_GROSS, slug_notes, strip_notes
+from engine import Job, Project, Settings, mm, media_rect, open_sources, scaling_layout, validate, bleed_for, gross_dimensions, validate_job_roles, _duplex_pairs, project_sides, overlapping_uses, plan_sides, crop_offsets, crop_centre, ROLE_AUTO, ROLE_SKIP, economic_report, gutter_notes, FILL_GROSS, slug_notes, strip_notes, orientation_differs
 
 
 @dataclass(frozen=True)
@@ -189,7 +189,9 @@ def inspect_project(project: Project, *, min_dpi: int = 200,
                 else:
                     runs.append(FormatRange(path, pnum, pnum, round(width, 2), round(height, 2),
                                             _format_name(width, height)))
-                if s.scale_mode == 'Bez skalowania' and (abs(width-s.trim_w) > .5 or abs(height-s.trim_h) > .5):
+                turned_fits = s.auto_orient and abs(height-s.trim_w) <= .5 and abs(width-s.trim_h) <= .5
+                if s.scale_mode == 'Bez skalowania' and not turned_fits and (
+                        abs(width-s.trim_w) > .5 or abs(height-s.trim_h) > .5):
                     label('BŁĄD', 'FORMAT',
                           f'TrimBox: {width:.2f} × {height:.2f} mm; docelowo: {s.trim_w:g} × {s.trim_h:g} mm. '
                           'Wybierz tryb skalowania lub dopasuj rozmiar.')
@@ -233,6 +235,10 @@ def inspect_project(project: Project, *, min_dpi: int = 200,
                                   f'Białe marginesy przycięte: grafika {cw:.2f} × {ch:.2f} mm '
                                   f'z TrimBox {width:.2f} × {height:.2f} mm.')
                         width, height = cw, ch
+                    if s.auto_orient and orientation_differs(width, height, s.trim_w, s.trim_h):
+                        label('INFO', 'OBROT', f'Strona {width:.2f} × {height:.2f} mm ma inną orientację niż '
+                              f'użytek {s.trim_w:g} × {s.trim_h:g} mm — zostanie obrócona o 90°.')
+                        width, height = height, width
                     if s.scale_mode == FILL_GROSS:
                         gw, gh = s.trim_w + 2*bleed_for(s), s.trim_h + 2*bleed_for(s)
                         factor, dx, dy = scaling_layout(width, height, gw, gh, s.scale_mode)

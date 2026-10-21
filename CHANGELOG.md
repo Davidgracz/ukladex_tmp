@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Mixed page sizes in one PDF (A4/A3/A5/landscape/A6) scaled to A5 or A6: new option „obracaj strony do orientacji
+  użytku” (Kadrowanie PDF) turns a landscape page on a portrait use (and vice versa) by 90° instead of shrinking it
+  (Dopasuj) or cutting half of it off (Wypełnij). Also accepted in „Bez skalowania”, refused with „Kadruj 1:1”;
+  preflight shows an OBROT note. Templates „Ulotka A6/A5 + 1,5 mm …” enable it (optional template field).
+  Off by default — example projects export byte-identically. Tests: `tests/test_mixed_sizes.py`.
+
 - Portable EXE for a USB stick: `BUILD_EXE_WINDOWS.bat` runs the tests first, builds `dist\Impozycjoner-Studio` with a
   generated icon (`scripts/make_icon.py`), adds `PORTABLE.txt`, a `dane` data folder and examples, checks the built
   EXE with `--self-test` (`selftest.py`, `scripts/check_exe.py`) and zips it; `jedenplik` also builds a single-file EXE.
