@@ -88,6 +88,59 @@ def plan_correction(files: list[list[tuple[float, float]]], chosen_file: int, ch
     return targets, skipped
 
 
+# --- Zmiana rozmiaru stron (skalowanie TrimBox do zadanych wymiarów) --------------------------------------------
+# Obserwacja działającego Impozycjonera (E3, zrzuty użytkownika 2026-10-21, wersja nowsza niż 4.0.4.0 w G:\ukladex):
+# tabela stron → „Zmień parametry w zaznaczonych wierszach” (Szerokość / Wysokość [mm]) skaluje strony A4 i A6 do
+# 108 × 151; opcje rozmiaru: „szerokość i wysokość niezależnie” (+ „włącz kadrowanie”), „tylko szerokość
+# (wysokość proporcjonalnie)”, „tylko wysokość (szerokość proporcjonalnie)”, „nowa szerokość i wysokość TrimBox”,
+# „zachowaj orientację (pion/poziom)”, „definiuj spad [mm]”.
+RESIZE_STRETCH = 'Szerokość i wysokość niezależnie'
+RESIZE_CROP = 'Szerokość i wysokość z kadrowaniem'
+RESIZE_WIDTH = 'Tylko szerokość (wysokość proporcjonalnie)'
+RESIZE_HEIGHT = 'Tylko wysokość (szerokość proporcjonalnie)'
+RESIZE_MODES = (RESIZE_STRETCH, RESIZE_CROP, RESIZE_WIDTH, RESIZE_HEIGHT)
+
+
+def resize_spec(width: float, height: float, mode: str = RESIZE_STRETCH, keep_orientation: bool = True,
+                bleed: float = 0.0) -> dict:
+    """Sprawdzony opis zmiany rozmiaru jednej strony (zapisywany w projekcie)."""
+    if mode not in RESIZE_MODES:
+        raise ValueError(f'Nieznany sposób zmiany rozmiaru: {mode}')
+    for value, label in ((width, 'Szerokość'), (height, 'Wysokość')):
+        if not isfinite(value) or not 1 <= value <= 5000:
+            raise ValueError(f'{label}: 1–5000 mm')
+    if not isfinite(bleed) or not 0 <= bleed <= 50:
+        raise ValueError('Spad: 0–50 mm')
+    return {'w': round(float(width), 3), 'h': round(float(height), 3), 'mode': mode,
+            'keep_orientation': bool(keep_orientation), 'bleed': round(float(bleed), 3)}
+
+
+def resize_plan(trim_w: float, trim_h: float, spec: dict) -> tuple[float, float, tuple[float, float]]:
+    """Nowy TrimBox strony (szer., wys.) i rozmiar wycinka źródła (szer., wys.) do przeskalowania — wszystko w mm,
+    w widocznej orientacji strony. Wycinek jest wyśrodkowany w TrimBox źródła.
+
+    H-39: „zachowaj orientację” zamienia szerokość z wysokością, gdy strona ma inną orientację niż wymiary docelowe;
+    „niezależnie” rozciąga w obu osiach; „z kadrowaniem” zachowuje proporcje i przycina nadmiar równo z obu stron.
+    """
+    w, h = spec['w'], spec['h']
+    mode = spec.get('mode', RESIZE_STRETCH)
+    # Zachowanie orientacji ma sens tylko, gdy podano oba wymiary (w trybach jednego wymiaru drugi jest pomijany).
+    if mode in (RESIZE_STRETCH, RESIZE_CROP) and spec.get('keep_orientation', True) \
+            and abs(trim_w - trim_h) > 0.01 * max(trim_w, trim_h) \
+            and abs(w - h) > 0.01 * max(w, h) and (trim_w > trim_h) != (w > h):
+        w, h = h, w
+    if mode == RESIZE_STRETCH:
+        return w, h, (trim_w, trim_h)
+    if mode == RESIZE_CROP:
+        scale = max(w / trim_w, h / trim_h)
+        return w, h, (w / scale, h / scale)
+    if mode == RESIZE_WIDTH:
+        return w, trim_h * w / trim_w, (trim_w, trim_h)
+    if mode == RESIZE_HEIGHT:
+        return trim_w * h / trim_h, h, (trim_w, trim_h)
+    raise ValueError(f'Nieznany sposób zmiany rozmiaru: {mode}')
+
+
 def apply(boxes: dict[str, list[float]], pages: list[int], box: Box | None) -> dict[str, list[float]]:
     """Nowe korekty pliku: ustaw ramkę na stronach `pages` albo (box=None) wróć do wartości z pliku."""
     result = dict(boxes)

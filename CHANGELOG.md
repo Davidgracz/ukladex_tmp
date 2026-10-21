@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Resize selected pages (page table → right click „Zmień rozmiar zaznaczonych stron (skaluj)…”), as observed in a
+  running Impozycjoner (user screenshots: editing Width/Height of table rows scales A4 and A6 pages to 108 × 151):
+  width and height independently (stretch) or with cropping (keep proportions), width only, height only, keep
+  orientation, optional bleed from artwork outside the TrimBox. Pages are rebuilt as vectors in memory when PDFs are
+  opened; the file on disk is unchanged; new sizes are shown with * in the table; stored per file (`page_sizes`,
+  optional). Tests: `tests/test_page_resize.py`.
+
 - Page size correction in the page table (right click → „Koryguj rozmiar strony (obszar netto)…”), modelled on the
   Imp4 window „Korekta położenia i rozmiaru obszaru netto” (UI texts + REA call metadata): page preview with a
   movable net frame, width/height and position in mm, scope this page / all / odd / even, in the file or the whole

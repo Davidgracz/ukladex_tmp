@@ -62,6 +62,8 @@ class Job:
     crop_y: float = 0.0  # mm: desired crop-centre displacement in source visual Y
     # Korekta rozmiaru/położenia netto stron (page_boxes.py): {"nr strony": [z lewej, od góry, szer., wys.] mm}
     page_boxes: dict[str, list[float]] = field(default_factory=dict)
+    # Zmiana rozmiaru stron (page_boxes.resize_spec): {"nr strony": {"w", "h", "mode", "keep_orientation", "bleed"}}
+    page_sizes: dict[str, dict] = field(default_factory=dict)
 
     def role_for(self, zero_based_page: int) -> str:
         return self.page_roles.get(str(zero_based_page + 1), self.role)
@@ -1462,6 +1464,69 @@ def apply_page_boxes(jobs: list[Job], sources: dict[str, fitz.Document]):
             page.set_trimbox(trim)
 
 
+def resized_document(doc: fitz.Document, sizes: dict[str, dict]) -> fitz.Document:
+    """Kopia dokumentu w pamięci, w której wskazane strony są przeskalowane wektorowo (H-39).
+
+    Nowa strona: TrimBox = zadany rozmiar, dookoła spad `bleed` wypełniony grafiką źródła spoza wycinka (jeśli jest);
+    MediaBox = BleedBox = TrimBox + 2 × spad. Pozostałe strony są kopiowane bez zmian.
+    """
+    import page_boxes as pb
+    out = fitz.open()
+    for index, page in enumerate(doc):
+        spec = sizes.get(str(index + 1))
+        if not spec:
+            out.insert_pdf(doc, from_page=index, to_page=index)
+            continue
+        origin = fitz.Rect(page.cropbox).tl
+        to_page = (-origin.x, -origin.y, -origin.x, -origin.y)
+        visible_trim = (fitz.Rect(page.trimbox) + to_page) * page.rotation_matrix
+        visible_trim.normalize()
+        visible_media = (fitz.Rect(page.mediabox) & fitz.Rect(page.cropbox)) + to_page
+        visible_media = visible_media * page.rotation_matrix
+        visible_media.normalize()
+        new_w, new_h, (cut_w, cut_h) = pb.resize_plan(mm(visible_trim.width), mm(visible_trim.height), spec)
+        sx, sy = pt(new_w) / pt(cut_w), pt(new_h) / pt(cut_h)
+        bleed = pt(spec.get('bleed', 0.0))
+        cx, cy = (visible_trim.x0 + visible_trim.x1) / 2, (visible_trim.y0 + visible_trim.y1) / 2
+        cut = fitz.Rect(cx - pt(cut_w) / 2, cy - pt(cut_h) / 2, cx + pt(cut_w) / 2, cy + pt(cut_h) / 2)
+        # Spad: tyle grafiki źródła poza wycinkiem, ile mieści się w spadzie po skalowaniu (nie więcej niż strona).
+        shown = fitz.Rect(cut.x0 - bleed / sx, cut.y0 - bleed / sy, cut.x1 + bleed / sx, cut.y1 + bleed / sy)
+        shown &= visible_media
+        target = out.new_page(width=pt(new_w) + 2 * bleed, height=pt(new_h) + 2 * bleed)
+        place = fitz.Rect(bleed + (shown.x0 - cut.x0) * sx, bleed + (shown.y0 - cut.y0) * sy,
+                          bleed + (shown.x1 - cut.x0) * sx, bleed + (shown.y1 - cut.y0) * sy)
+        clip = shown * page.derotation_matrix   # clip w nieobróconych współrzędnych strony źródłowej
+        clip.normalize()
+        target.show_pdf_page(place, doc, index, clip=clip, keep_proportion=False)
+        r = target.rect  # od samej strony — bez błędów zaokrągleń przy spadzie 0
+        target.set_trimbox(fitz.Rect(r.x0 + bleed, r.y0 + bleed, r.x1 - bleed, r.y1 - bleed))
+        target.set_bleedbox(r)
+    return out
+
+
+def apply_page_sizes(jobs: list[Job], sources: dict[str, fitz.Document]):
+    """Zmiana rozmiaru stron z projektu (tabela stron → „Zmień rozmiar zaznaczonych stron”), w pamięci."""
+    seen: dict[str, dict] = {}
+    for job in jobs:
+        sizes = job.page_sizes or {}
+        if job.path in seen and seen[job.path] != sizes:
+            raise ValueError(f'{Path(job.path).name}: ten sam PDF ma różne zmiany rozmiaru stron w kilku pozycjach listy')
+        seen[job.path] = sizes
+    import page_boxes as pb
+    for path, sizes in seen.items():
+        if not sizes:
+            continue
+        doc = sources[path]
+        for key, spec in sizes.items():
+            if not 1 <= int(key) <= len(doc):
+                raise ValueError(f'{Path(path).name}: zmiana rozmiaru dla nieistniejącej strony {key}')
+            pb.resize_spec(spec['w'], spec['h'], spec.get('mode', pb.RESIZE_STRETCH),
+                           spec.get('keep_orientation', True), spec.get('bleed', 0.0))
+        resized = resized_document(doc, sizes)
+        doc.close()
+        sources[path] = resized
+
+
 def open_sources(jobs: list[Job]) -> dict[str, fitz.Document]:
     sources = {}
     try:
@@ -1478,6 +1543,7 @@ def open_sources(jobs: list[Job]) -> dict[str, fitz.Document]:
                     raise ValueError(f'Nieobsługiwany lub zabezpieczony PDF: {job.path}')
                 sources[job.path] = doc
         apply_page_boxes(jobs, sources)
+        apply_page_sizes(jobs, sources)
         return sources
     except Exception:
         for doc in sources.values():
@@ -1657,6 +1723,8 @@ def save_project(project: Project, path: str):
                  'crop_x':j.crop_x,'crop_y':j.crop_y}
         if j.page_boxes:  # pole opcjonalne: projekty bez korekt zapisują się jak dotąd
             entry['page_boxes'] = j.page_boxes
+        if j.page_sizes:  # pole opcjonalne
+            entry['page_sizes'] = j.page_sizes
         jobs.append(entry)
     relative_overrides = {}
     for key, entry in project.overrides.items():
@@ -1684,7 +1752,8 @@ def load_project(path: str) -> Project:
                 else str(Path(j['path']).resolve()), copies=int(j['copies']),
                 role=j.get('role', ROLE_AUTO), page_roles=dict(j.get('page_roles', {})),
                 crop_x=float(j.get('crop_x', 0)), crop_y=float(j.get('crop_y', 0)),
-                page_boxes={str(k): [float(v) for v in box] for k, box in dict(j.get('page_boxes', {})).items()})
+                page_boxes={str(k): [float(v) for v in box] for k, box in dict(j.get('page_boxes', {})).items()},
+                page_sizes={str(k): dict(spec) for k, spec in dict(j.get('page_sizes', {})).items()})
             for j in data.get('jobs', [])]
     overrides = data.get('overrides', {})
     if not isinstance(overrides, dict):
