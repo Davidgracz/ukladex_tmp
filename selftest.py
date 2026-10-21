@@ -49,6 +49,8 @@ def _checks(folder: Path) -> list[str]:
     window.destroy()
     done.append('okno programu')
     done.append(f'dane użytkownika: {data_dir()} ({"przenośne" if is_portable() else "APPDATA"})')
+    import updater
+    done.append(f'aktualizacje: tryb {updater.install_mode()}, źródło {updater.API_URL}')
     return done
 
 

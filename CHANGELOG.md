@@ -1,6 +1,19 @@
 # Changelog
 
-## Unreleased
+## 0.5.1
+
+First public release of **ImpoCraft** (author Dawid Gracz), the continuation of Impozycjoner Studio.
+
+- Automatic updates: at start (at most every 6 hours) and with „Sprawdź aktualizacje” the program checks GitHub
+  Releases of Davidgracz/ukladex_tmp. When a newer version exists it shows the changes and offers „Zaktualizuj teraz”
+  (installed version: downloads the installer, verifies its SHA-256, installs silently and restarts), „Później”,
+  „Pomiń tę wersję” and turning automatic checks off. The portable version only links to the release page.
+- Only URLs under github.com/Davidgracz/ukladex_tmp/releases/download/ are downloaded; drafts and pre-releases are
+  ignored; a corrupted download is deleted.
+- `scripts/publish_release.py` publishes a release (installer, its `.sha256`, portable ZIP, notes from this file).
+- Windows installer, program rename and EXE version information — see below.
+
+## Unreleased (included in 0.5.1)
 
 - Rename the program to **ImpoCraft** 0.5.0 (author Dawid Gracz): window title, PDF metadata, EXE name. Name, version
   and author live in `app_info.py`. User data moves to `%APPDATA%\ImpoCraft`; data from the old
