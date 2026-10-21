@@ -6,13 +6,15 @@ Z tych wartości korzystają okno programu, metadane eksportowanych PDF, informa
 from __future__ import annotations
 
 APP_NAME = 'ImpoCraft'
-VERSION = '0.5.0'
+VERSION = '0.5.1'
 AUTHOR = 'Dawid Gracz'
 COPYRIGHT_YEAR = '2026'
 DESCRIPTION = 'Impozycja (montaż) PDF do druku'
 EXE_NAME = 'ImpoCraft'
 # Stały identyfikator instalatora: po nim Windows rozpoznaje aktualizację tej samej aplikacji. Nie zmieniać.
 INSTALLER_APP_ID = '{6F0E2B1C-5A7D-4C39-9E21-0B8D4F7A3C55}'
+# Repozytorium, którego wydania (Releases) program sprawdza w poszukiwaniu aktualizacji (updater.py).
+UPDATE_REPO = 'Davidgracz/ukladex_tmp'
 
 TITLE = f'{APP_NAME} {VERSION}'
 COPYRIGHT = f'© {COPYRIGHT_YEAR} {AUTHOR}'

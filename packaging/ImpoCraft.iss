@@ -67,3 +67,11 @@ Root: HKA; Subkey: "Software\Classes\ImpoCraft.Project\shell\open\command"; Valu
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; Aktualizacja z programu (updater.py): cicha instalacja z /RELAUNCH uruchamia nową wersję jako zwykły użytkownik.
+Filename: "{app}\{#AppExe}"; Flags: nowait runasoriginaluser; Check: RelaunchRequested
+
+[Code]
+function RelaunchRequested: Boolean;
+begin
+  Result := Pos('/RELAUNCH', UpperCase(GetCmdTail)) > 0;
+end;

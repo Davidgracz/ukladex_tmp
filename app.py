@@ -9,6 +9,7 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from PIL import ImageTk
 import pymupdf as fitz
 import app_info
+from update_ui import UpdateChecker
 
 from engine import Job, Project, Settings, SourcePage, open_sources, economic_report, project_sides, assign_slot, swap_slots, export_pdf, export_pages, geometry, load_project, preview, save_project, source_summary, validate, bleed_for, gross_dimensions, mm, PAGE_ROLES, ROLE_AUTO, ROLE_SKIP
 from job_templates import (BUILTIN, apply_template, is_builtin, list_templates, read_template,
@@ -199,6 +200,7 @@ class App(tk.Tk):
         self._create_layout()
         self._fill_fields()
         self.after(200, self.refresh)
+        self.after(3000, self.updates.auto)
 
     def _configure_style(self):
         style = ttk.Style(self)
@@ -379,6 +381,11 @@ class App(tk.Tk):
         bottom = ttk.Frame(self.imposition_tab, padding=(8, 3))
         bottom.pack(fill='x')
         ttk.Label(bottom, text=f'{app_info.TITLE} · {app_info.COPYRIGHT}', foreground=MUTED).pack(side='left')
+        self.update_text = tk.StringVar(value='')
+        self.updates = UpdateChecker(self, self.update_text)
+        ttk.Button(bottom, text='Sprawdź aktualizacje', style='Quick.TButton',
+                   command=self.updates.manual).pack(side='left', padx=(10, 0))
+        ttk.Label(bottom, textvariable=self.update_text, foreground=ACCENT).pack(side='left', padx=(6, 0))
         ttk.Label(bottom, textvariable=self.stats_text, foreground=MUTED).pack(side='left', padx=18)
         ttk.Label(bottom, textvariable=self.status_text, foreground=MUTED).pack(side='right')
 
