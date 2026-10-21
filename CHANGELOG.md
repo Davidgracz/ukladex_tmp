@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Custom marks from PDF files (U), modelled on the original's custom-marks window: files U1L/U1R (odd pages of the
+  output PDF) and U2L/U2R (even pages), H and V in mm for odd and even pages (H from the left/right sheet edge, V from
+  the bottom edge, both to the mark's top corner), a main switch and a draw switch per mark; a missing file means the
+  mark is not drawn (preflight lists it, also marks sticking out of the sheet). Marks keep the size of their PDF page
+  and are placed as vectors. Default folder `znaczniki` in the user data (or any folder set in the project); the
+  parameters window (right click on „Znaczniki własne (U)”, shortcut U) loads a PDF under the right name and opens the
+  folder. Off by default: exports of all example projects are byte-identical in content.
+- Previews pass the real sheet number to `render_side`, so custom marks show the odd/even variant of the sheet
+  being viewed (other odd/even marks still use the preview page number — unchanged).
+
 ## 0.5.1
 
 First public release of **ImpoCraft** (author Dawid Gracz), the continuation of Impozycjoner Studio.

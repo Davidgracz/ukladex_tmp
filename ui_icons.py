@@ -105,6 +105,11 @@ def draw(name, size=30):
         for i, c in enumerate([(0, 174, 239), (236, 0, 140), (255, 242, 0), (35, 31, 32)]):
             d.rectangle(((2 + i*6.5)*u, 4*u, (7.8 + i*6.5)*u, 10*u), fill=c)
         _page(d, (4*u, 13*u, 26*u, 28*u), fold=False)
+    elif name == 'own':  # arkusz z dwoma znacznikami z plików w dolnych narożnikach
+        _page(d, (3*u, 3*u, 27*u, 27*u), fold=False)
+        for x0 in (5, 19):
+            d.rectangle((x0*u, 19*u, (x0 + 6)*u, 25*u), fill=INK)
+            d.rectangle(((x0 + 2)*u, 21*u, (x0 + 4)*u, 23*u), fill=PAPER)
     elif name == 'trimcrop':  # rozkładówka z włosowym przycięciem przy grzbiecie
         _page(d, (3*u, 5*u, 14.5*u, 25*u), fold=False)
         _page(d, (15.5*u, 5*u, 27*u, 25*u), fold=False)
