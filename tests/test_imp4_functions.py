@@ -83,7 +83,7 @@ def test_metadata_empty_fields_are_file_name_and_default_unchanged(tmp_path):
     assert meta['title'] == meta['subject'] == meta['keywords'] == 'Ulotki_500'
     export_pdf(two_up_project(src), str(tmp_path / 'b.pdf'))
     with fitz.open(tmp_path / 'b.pdf') as doc:
-        assert doc.metadata['title'] == 'Impozycjoner Studio - montaż PDF'
+        assert doc.metadata['title'] == 'ImpoCraft - montaż PDF'
     with pytest.raises(ValueError):
         output_metadata('x.pdf', {'producer': 'x'})
 

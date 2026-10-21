@@ -1,6 +1,6 @@
 """Sprawdza zbudowany EXE: uruchamia go z `--self-test` i czyta raport (bez klikania w okno).
 
-Użycie: python scripts/check_exe.py dist/Impozycjoner-Studio/Impozycjoner-Studio.exe
+Użycie: python scripts/check_exe.py dist/ImpoCraft/ImpoCraft.exe
 Kod wyjścia 0 = program startuje, ładuje moduły, buduje okno i eksportuje próbny PDF.
 """
 from __future__ import annotations
