@@ -170,6 +170,17 @@ class Settings:
     strip_trim: float = 0.0       # 0 = pełna długość pola zadruku; X = pole zadruku minus X mm
     strip_colors: tuple = marks_rules.DEFAULT_STRIP_COLORS
     strip_pdf: str = ''           # pasek z pliku PDF zamiast rysowanego przez program
+    # Znaczniki własne z plików U1L/U1R/U2L/U2R.pdf (U) — marks.own_mark_rect, H-40..H-42.
+    own_marks: bool = False       # „dodaj znaczniki”
+    own_folder: str = ''          # folder z plikami; puste = folder „znaczniki” w danych użytkownika
+    own_1l: bool = True           # rysuj lewy / prawy na stronach nieparzystych (gdy plik istnieje)
+    own_1r: bool = True
+    own_2l: bool = True           # … na stronach parzystych
+    own_2r: bool = True
+    own_h1: float = 5.0           # mm od lewej/prawej krawędzi arkusza (strony nieparzyste)
+    own_v1: float = 15.0          # mm od dolnej krawędzi do górnego narożnika znacznika
+    own_h2: float = 5.0
+    own_v2: float = 15.0
 
     def __post_init__(self):
         # JSON zapisuje krotki jako listy — wracamy do niezmiennej postaci (porównania, wartości domyślne).
@@ -333,6 +344,13 @@ def validate(settings: Settings):
         raise ValueError('Sprawdź kolory kostek! Przynajmniej jedna powinna mieć zdefiniowany kolor.')
     if not isinstance(settings.strip_pdf, str):
         raise ValueError('Pasek z pliku PDF: ścieżka musi być tekstem')
+    if not isinstance(settings.own_folder, str):
+        raise ValueError('Znaczniki własne: folder musi być tekstem')
+    for key, label in (('own_h1', 'H strony nieparzystej'), ('own_v1', 'V strony nieparzystej'),
+                       ('own_h2', 'H strony parzystej'), ('own_v2', 'V strony parzystej')):
+        value = getattr(settings, key)
+        if type(value) not in (int, float) or not isfinite(value) or not -1000 <= value <= 3000:
+            raise ValueError(f'Znaczniki własne, {label} [mm]: dozwolone -1000–3000')
     if settings.slug_font not in ('Arial', 'Courier'):
         raise ValueError('Krój pisma opisu: Arial albo Courier')
     for key in ('slug_text', 'slug_sheet_word', 'slug_page_word'):
@@ -1220,7 +1238,8 @@ def _place_pdf(target: fitz.Page, p: SourcePage, slot: Slot, s: Settings,
 def render_side(side: SheetSide, sources: dict[str, fitz.Document], s: Settings,
                 destination: fitz.Document | None = None,
                 offsets: dict[str, tuple[float, float]] | None = None,
-                output_name: str | None = 'montaz.pdf') -> fitz.Document:
+                output_name: str | None = 'montaz.pdf', page_number: int | None = None) -> fitz.Document:
+    """page_number — numer strony w pliku wynikowym (podgląd renderuje pojedynczy arkusz do nowego dokumentu)."""
     out = destination if destination is not None else fitz.open()
     target = out.new_page(width=pt(s.sheet_w), height=pt(s.sheet_h))
     marks_here = cut_marks_apply(s, target.number + 1, side.sheet_number)
@@ -1237,6 +1256,7 @@ def render_side(side: SheetSide, sources: dict[str, fitz.Document], s: Settings,
     for (x0, y0), (x1, y1) in gutter_mark_lines(s):
         target.draw_line((pt(x0), pt(y0)), (pt(x1), pt(y1)), color=(0, 0, 0), width=s.gutter_mark_pt)
     draw_sheet_marks(target, side, s, output_name=output_name)
+    draw_own_marks(target, s, page_number or target.number + 1)
     return out
 
 
@@ -1352,6 +1372,79 @@ def draw_color_strip(target: fitz.Page, s: Settings, grid):
                                                             s.strip_zones, s.strip_centered):
             target.draw_rect(fitz.Rect(pt(x0 + offset), pt(y0), pt(x0 + offset + s.strip_cell_w), pt(y0 + height)),
                              color=None, fill=(c / 100, m / 100, y / 100, k / 100), width=0)
+
+
+OWN_MARKS_SUBFOLDER = 'znaczniki'
+_own_mark_cache: dict[tuple, tuple[float, float]] = {}
+
+
+def own_marks_folder(s: Settings) -> Path:
+    """Folder z plikami U1L/U1R/U2L/U2R.pdf; domyślnie „znaczniki” w danych użytkownika (H-41)."""
+    if s.own_folder:
+        return Path(s.own_folder)
+    import user_data
+    return user_data.data_dir() / OWN_MARKS_SUBFOLDER
+
+
+def own_mark_files(s: Settings) -> dict[str, Path]:
+    """Pliki znaczników, które istnieją (brak pliku = znacznik nieaktywny, jak przełącznik w Imp4)."""
+    folder = own_marks_folder(s)
+    return {name: folder / f'{name}.pdf' for name in marks_rules.OWN_MARK_NAMES if (folder / f'{name}.pdf').is_file()}
+
+
+def own_mark_size(path: Path) -> tuple[float, float]:
+    key = (str(path), path.stat().st_mtime)
+    if key not in _own_mark_cache:
+        try:
+            with fitz.open(str(path)) as doc:
+                rect = doc[0].rect
+        except Exception as exc:
+            raise ValueError(f'Plik znacznika własnego nie jest poprawnym PDF: {path.name}') from exc
+        _own_mark_cache[key] = (mm(rect.width), mm(rect.height))
+    return _own_mark_cache[key]
+
+
+def own_mark_placements(s: Settings, page_number: int) -> list[tuple[Path, tuple[float, float, float, float]]]:
+    """[(plik, prostokąt mm)] znaczników własnych na stronie pliku wynikowego o danym numerze (od 1)."""
+    if not s.own_marks:
+        return []
+    files = own_mark_files(s)
+    odd = page_number % 2 == 1
+    h, v = (s.own_h1, s.own_v1) if odd else (s.own_h2, s.own_v2)
+    result = []
+    for side in ('L', 'R'):
+        name = marks_rules.own_mark_name(page_number, side)
+        if not getattr(s, f'own_{name[1]}{side.lower()}') or name not in files:
+            continue
+        rect = marks_rules.own_mark_rect(side, own_mark_size(files[name]), h, v, s.sheet_w, s.sheet_h)
+        result.append((files[name], rect))
+    return result
+
+
+def draw_own_marks(target: fitz.Page, s: Settings, page_number: int):
+    for path, (x0, y0, x1, y1) in own_mark_placements(s, page_number):
+        with fitz.open(str(path)) as doc:
+            target.show_pdf_page(fitz.Rect(pt(x0), pt(y0), pt(x1), pt(y1)), doc, 0, keep_proportion=False)
+
+
+def own_marks_notes(s: Settings) -> list[str]:
+    """Uwagi preflight: brak plików, znacznik poza arkuszem."""
+    if not s.own_marks:
+        return []
+    files = own_mark_files(s)
+    folder = own_marks_folder(s)
+    if not files:
+        return [f'Znaczniki własne włączone, ale w folderze {folder} nie ma plików U1L/U1R/U2L/U2R.pdf.']
+    notes = []
+    wanted = [n for n in marks_rules.OWN_MARK_NAMES if getattr(s, f'own_{n[1]}{n[2].lower()}')]
+    missing = [n for n in wanted if n not in files]
+    if missing:
+        notes.append(f'Znaczniki własne: brak plików {", ".join(m + ".pdf" for m in missing)} — nie będą rysowane.')
+    for page in (1, 2):
+        for path, (x0, y0, x1, y1) in own_mark_placements(s, page):
+            if x0 < 0 or y0 < 0 or x1 > s.sheet_w or y1 > s.sheet_h:
+                notes.append(f'Znacznik własny {path.stem} wystaje poza arkusz — sprawdź H i V.')
+    return notes
 
 
 def strip_notes(s: Settings) -> list[str]:
@@ -1673,7 +1766,7 @@ def preview(project: Project, pixels: int = 1200, index: int = 0):
             if selected is None:
                 out.new_page(width=pt(project.settings.sheet_w), height=pt(project.settings.sheet_h))
             else:
-                render_side(selected, sources, project.settings, out, offsets)
+                render_side(selected, sources, project.settings, out, offsets, page_number=index + 1)
             page = out[0]
             zoom = min(pixels/page.rect.width, pixels/page.rect.height, 2)
             pix = page.get_pixmap(matrix=fitz.Matrix(zoom,zoom), alpha=False)
@@ -1698,7 +1791,7 @@ def editor_preview(project: Project, pixels: int = 1200, index: int = 0):
         selected = calibrate_verso(apply_overrides(selected, project, sources, full_grid=True), project.settings)
         out = fitz.open()
         try:
-            render_side(selected, sources, project.settings, out, offsets)
+            render_side(selected, sources, project.settings, out, offsets, page_number=index + 1)
             page = out[0]
             zoom = min(pixels/page.rect.width, pixels/page.rect.height, 2)
             pix = page.get_pixmap(matrix=fitz.Matrix(zoom,zoom),alpha=False)

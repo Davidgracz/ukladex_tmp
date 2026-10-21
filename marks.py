@@ -345,3 +345,35 @@ def trim_crop_side(page_number: int) -> str:
     if page_number < 1:
         raise ValueError('Numer strony liczy się od 1')
     return 'left' if page_number % 2 == 0 else 'right'
+
+
+# --- Znaczniki własne z plików PDF (okno „Parametry znaczników własnych”, E1; H-40..H-42) -------------------
+
+OWN_MARK_NAMES = ('U1L', 'U1R', 'U2L', 'U2R')
+
+
+def own_mark_name(page_number: int, side: str) -> str:
+    """Nazwa pliku znacznika: U1 na stronach nieparzystych pliku wynikowego, U2 na parzystych; L/R — lewy/prawy."""
+    if page_number < 1:
+        raise ValueError('Numer strony liczy się od 1')
+    if side not in ('L', 'R'):
+        raise ValueError('Strona znacznika: L albo R')
+    return f'U{1 if page_number % 2 else 2}{side}'
+
+
+def own_mark_rect(side: str, size: tuple[float, float], h: float, v: float,
+                  sheet_w: float, sheet_h: float) -> tuple[float, float, float, float]:
+    """Prostokąt znacznika w mm (początek układu w lewym górnym rogu arkusza).
+
+    H — odległość od lewej (L) albo prawej (R) krawędzi arkusza, V — od dolnej krawędzi; obie liczone
+    do górnego narożnika znacznika: lewego dla L, prawego dla R. Znacznik ma własny rozmiar strony PDF (H-40).
+    """
+    w, hgt = size
+    if w <= 0 or hgt <= 0:
+        raise ValueError('Plik znacznika ma pustą stronę')
+    top = sheet_h - v
+    if side == 'L':
+        return (h, top, h + w, top + hgt)
+    if side == 'R':
+        return (sheet_w - h - w, top, sheet_w - h, top + hgt)
+    raise ValueError('Strona znacznika: L albo R')

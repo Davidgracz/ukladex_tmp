@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+import os
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
@@ -37,7 +38,8 @@ MARK_PARAMS = ('mark_offset', 'mark_length', 'mark_width_pt',
                'slug_file', 'slug_sheet', 'slug_print_area', 'slug_sizes', 'slug_datetime', 'slug_text',
                'slug_size', 'slug_font', 'slug_top', 'slug_side', 'slug_sheet_word', 'slug_page_word', 'slug_roman',
                'strip_top', 'strip_bottom', 'strip_gutter', 'strip_cell_w', 'strip_cell_h', 'strip_zones',
-               'strip_offset', 'strip_centered', 'strip_trim', 'strip_colors', 'strip_pdf')
+               'strip_offset', 'strip_centered', 'strip_trim', 'strip_colors', 'strip_pdf',
+               'own_folder', 'own_1l', 'own_1r', 'own_2l', 'own_2r', 'own_h1', 'own_v1', 'own_h2', 'own_v2')
 MARK_CHOICES = {'gross_mark_pages': ('Wszystkie', 'Nieparzyste', 'Parzyste'), 'reg_variant': (1, 2),
                 'slug_size': (10, 12, 14), 'slug_font': ('Arial', 'Courier'),
                 'mark_pages': ('Wszystkie', 'Nieparzyste', 'Parzyste'),
@@ -107,6 +109,16 @@ MARK_DIALOGS = {
         ('gutter_marks', 'Rysuj znacznik w osi wycinki'),
         ('gutter_mark_length', 'Długość znacznika [mm] (0 = przez całe pole zadruku)'),
         ('gutter_mark_pt', 'Grubość znacznika [pt]'))),
+    'own': ('Znaczniki własne z plików PDF', (
+        ('own_folder', 'Folder z plikami U1L/U1R/U2L/U2R.pdf (puste = domyślny)'),
+        ('own_h1', 'Strona nieparzysta — H [mm] od lewej/prawej krawędzi'),
+        ('own_v1', 'Strona nieparzysta — V [mm] od dolnej krawędzi'),
+        ('own_1l', 'Strona nieparzysta — rysuj lewy (U1L)'),
+        ('own_1r', 'Strona nieparzysta — rysuj prawy (U1R)'),
+        ('own_h2', 'Strona parzysta — H [mm] od lewej/prawej krawędzi'),
+        ('own_v2', 'Strona parzysta — V [mm] od dolnej krawędzi'),
+        ('own_2l', 'Strona parzysta — rysuj lewy (U2L)'),
+        ('own_2r', 'Strona parzysta — rysuj prawy (U2R)'))),
     'trimcrop': ('Dodatkowe docięcie TrimBox', (
         ('trim_crop_pt', 'Szerokość docięcia [pt] (z lewej na parzystych, z prawej na nieparzystych)'),)),
 }
@@ -315,6 +327,7 @@ class App(tk.Tk):
         self.reg_var = tk.BooleanVar(value=False)
         self.slug_var = tk.BooleanVar(value=False)
         self.strip_var = tk.BooleanVar(value=False)
+        self.own_var = tk.BooleanVar(value=False)
         defaults = Settings()
         self.mark_params = {key: getattr(defaults, key) for key in MARK_PARAMS}
         self.status_text = tk.StringVar(value='')
@@ -397,7 +410,7 @@ class App(tk.Tk):
         # Skróty jak w Impozycjonerze 4: Ctrl+N nowa impozycja, Ctrl+W wczytaj projekt, Shift+Ctrl+S zapisz jako.
         for key, var in (('n', self.marks_var), ('w', self.gutter_var), ('t', self.trimcrop_var),
                          ('b', self.gross_var), ('p', self.reg_var), ('o', self.slug_var),
-                         ('k', self.strip_var)):
+                         ('k', self.strip_var), ('u', self.own_var)):
             self.bind(f'<KeyPress-{key}>', lambda e, v=var: self._mark_shortcut(e, v))
             self.bind(f'<KeyPress-{key.upper()}>', lambda e, v=var: self._mark_shortcut(e, v))
         self.bind('<Control-n>', lambda e: self.new_project())
@@ -676,6 +689,7 @@ class App(tk.Tk):
                                       ('register', 'Pasery\n(P)', self.reg_var, 'register'),
                                       ('slug', 'Opis\narkusza (O)', self.slug_var, 'slug'),
                                       ('strip', 'Pasek\nkontrolny (K)', self.strip_var, 'strip'),
+                                      ('own', 'Znaczniki\nwłasne (U)', self.own_var, 'own'),
                                       ('numbers', 'Numery\nstron', self.labels_var, None)):
             button = ttk.Checkbutton(marks, text=text, image=self._icon(icon), compound='top', variable=var,
                                      style='Tool.Toolbutton', width=9, command=self.schedule_refresh)
@@ -967,6 +981,7 @@ class App(tk.Tk):
         self.reg_var.set(s.reg_marks)
         self.slug_var.set(s.slug_on)
         self.strip_var.set(s.strip_on)
+        self.own_var.set(s.own_marks)
         self.white_trim_var.set(s.white_trim)
         self.auto_orient_var.set(s.auto_orient)
         self.mark_params = {key: getattr(s, key) for key in MARK_PARAMS}
@@ -1039,6 +1054,7 @@ class App(tk.Tk):
                         gutter_on=self.gutter_var.get(), trim_crop=self.trimcrop_var.get(),
                         gross_marks=self.gross_var.get(), reg_marks=self.reg_var.get(), slug_on=self.slug_var.get(),
                         strip_on=self.strip_var.get(),
+                        own_marks=self.own_var.get(),
                         white_trim=self.white_trim_var.get(), auto_orient=self.auto_orient_var.get(),
                         **self.mark_params)
 
@@ -1641,7 +1657,7 @@ class App(tk.Tk):
 
     def marks_all_off(self):
         for var in (self.marks_var, self.gutter_var, self.trimcrop_var, self.gross_var, self.reg_var,
-                    self.slug_var, self.strip_var, self.labels_var):
+                    self.slug_var, self.strip_var, self.own_var, self.labels_var):
             var.set(False)
         self.schedule_refresh()
 
@@ -1693,6 +1709,14 @@ class App(tk.Tk):
                     var.trace_add('write', paint)
                     paint()
                 continue
+            if key == 'own_folder':
+                values[key] = tk.StringVar(value=current)
+                box = ttk.Frame(body)
+                box.grid(row=row, column=1, sticky='e', padx=(10, 0))
+                ttk.Entry(box, textvariable=values[key], width=30).pack(side='left')
+                ttk.Button(box, text='Wybierz…', command=lambda v=values[key]: v.set(
+                    filedialog.askdirectory(parent=dlg) or v.get())).pack(side='left', padx=(4, 0))
+                continue
             if key == 'strip_pdf':
                 values[key] = tk.StringVar(value=current)
                 box = ttk.Frame(body)
@@ -1716,6 +1740,8 @@ class App(tk.Tk):
                                  'liczbie kolumn, pozioma przy parzystej liczbie wierszy. Inaczej preflight pokaże uwagę.',
                       style='Muted.TLabel', wraplength=430).grid(row=len(rows) + 1, column=0, columnspan=2,
                                                                  sticky='w', pady=(8, 0))
+        if kind == 'own':
+            self._own_marks_files_panel(body, len(rows) + 1, dlg, values['own_folder'])
         if kind == 'trimcrop':
             ttk.Label(body, text='Uwaga przy rozkładówkach środkowych: zbyt duże docięcie usunie widoczny '
                                  'fragment elementu leżącego na obu stronach.', style='Muted.TLabel',
@@ -1749,6 +1775,53 @@ class App(tk.Tk):
         actions.grid(row=len(rows) + 2, column=0, columnspan=2, sticky='e', pady=(12, 0))
         ttk.Button(actions, text='Anuluj', command=dlg.destroy).pack(side='right')
         ttk.Button(actions, text='Zastosuj', style='Accent.TButton', command=save).pack(side='right', padx=(0, 6))
+
+    def _own_marks_files_panel(self, body, row, dlg, folder_var):
+        """Lista plików znaczników własnych: który jest, wczytanie pliku pod właściwą nazwą, otwarcie folderu."""
+        import shutil
+        from engine import own_marks_folder
+        panel = ttk.Frame(body)
+        panel.grid(row=row, column=0, columnspan=2, sticky='we', pady=(10, 0))
+        ttk.Label(panel, text='U1 — strony nieparzyste pliku wynikowego, U2 — parzyste; L — lewy, R — prawy. '
+                              'H i V wskazują górny narożnik znacznika (lewy dla L, prawy dla R). Znacznik ma '
+                              'rozmiar strony swojego pliku PDF; brak pliku = znacznik nie jest rysowany.',
+                  style='Muted.TLabel', wraplength=470).grid(row=0, column=0, columnspan=3, sticky='w')
+        labels = {}
+
+        def folder():
+            return own_marks_folder(replace(self._read_fields(), own_folder=folder_var.get().strip()))
+
+        def refresh(*_):
+            for name, label in labels.items():
+                path = folder() / f'{name}.pdf'
+                label.configure(text='jest' if path.is_file() else 'brak pliku',
+                                foreground=TEXT if path.is_file() else MUTED)
+
+        def load(name):
+            chosen = filedialog.askopenfilename(parent=dlg, filetypes=[('PDF', '*.pdf')])
+            if not chosen:
+                return
+            try:
+                target = folder()
+                target.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(chosen, target / f'{name}.pdf')
+            except OSError as exc:
+                messagebox.showerror('Znaczniki własne', f'Nie udało się skopiować pliku:\n{exc}', parent=dlg)
+            refresh()
+
+        for i, name in enumerate(marks.OWN_MARK_NAMES, start=1):
+            ttk.Label(panel, text=f'{name}.pdf').grid(row=i, column=0, sticky='w', pady=1)
+            labels[name] = ttk.Label(panel, text='')
+            labels[name].grid(row=i, column=1, sticky='w', padx=8)
+            ttk.Button(panel, text='Wczytaj plik…', command=lambda n=name: load(n)).grid(row=i, column=2, sticky='e')
+
+        def open_folder():
+            target = folder()
+            target.mkdir(parents=True, exist_ok=True)
+            os.startfile(str(target)) if hasattr(os, 'startfile') else None
+        ttk.Button(panel, text='Otwórz folder', command=open_folder).grid(row=5, column=2, sticky='e', pady=(4, 0))
+        folder_var.trace_add('write', refresh)
+        refresh()
 
     # --- Funkcje wzorowane na oknie głównym Impozycjonera 4 -------------------------------------------
 
