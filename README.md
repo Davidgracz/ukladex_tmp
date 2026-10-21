@@ -1,3 +1,22 @@
+# Wersja przenośna (pendrive) — budowanie EXE
+
+1. Na komputerze z Pythonem uruchom **`BUILD_EXE_WINDOWS.bat`** (dwuklik). Skrypt: tworzy `.venv`, instaluje biblioteki
+   i PyInstaller, uruchamia testy (gdy któryś nie przejdzie — EXE nie powstaje), buduje program, sprawdza zbudowany EXE
+   (`--self-test`: okno, montaż ze znacznikami, preflight, programy dodatkowe) i pakuje ZIP.
+2. Wynik: folder **`dist\Impozycjoner-Studio`** oraz **`dist\Impozycjoner-Studio-przenosny.zip`**. Skopiuj cały folder
+   (albo rozpakuj ZIP) na pendrive i uruchom `Impozycjoner-Studio.exe` — na docelowym komputerze nie trzeba instalować
+   Pythona ani niczego innego.
+3. Tryb przenośny: obok EXE leży `PORTABLE.txt`, więc szablony prac i profile maszyn zapisują się w podfolderze `dane`
+   na pendrivie (nie w `%APPDATA%` komputera). Usuń `PORTABLE.txt`, jeśli wolisz zapis na komputerze.
+   Folder `przyklady` zawiera przykładowe PDF-y i projekty `.psimp`.
+4. `BUILD_EXE_WINDOWS.bat jedenplik` — dodatkowo jeden plik `dist\jeden-plik\Impozycjoner-Studio.exe` (wygodny, ale
+   wolniej startuje, bo przy każdym uruchomieniu rozpakowuje się do folderu tymczasowego). Zalecany jest folder.
+
+Szybkie sprawdzenie zbudowanego programu w dowolnym momencie: `Impozycjoner-Studio.exe --self-test raport.txt`
+(raport zaczyna się od „OK” albo „BŁĄD”).
+
+---
+
 # Interfejs w stylu Impozycjonera 4
 
 ![Okno główne](docs/interface-imp4-styl.png)

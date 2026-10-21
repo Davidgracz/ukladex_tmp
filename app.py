@@ -1978,4 +1978,8 @@ class App(tk.Tk):
 
 
 if __name__=='__main__':
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == '--self-test':  # sprawdzenie zbudowanego EXE (scripts/check_exe.py)
+        import selftest
+        sys.exit(selftest.run(sys.argv[2] if len(sys.argv) > 2 else None))
     App().mainloop()

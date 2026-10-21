@@ -15,11 +15,8 @@ FLIPS = ('Długa krawędź', 'Krótka krawędź')
 
 
 def profile_path() -> Path:
-    if os.name == 'nt' and os.environ.get('APPDATA'):
-        base = Path(os.environ['APPDATA'])
-    else:
-        base = Path.home() / '.config'
-    return base / 'Impozycjoner Studio' / 'duplex_profiles.json'
+    from user_data import data_dir  # APPDATA albo folder `dane` obok programu (tryb przenośny)
+    return data_dir() / 'duplex_profiles.json'
 
 
 def _name(name: str) -> str:

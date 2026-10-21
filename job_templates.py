@@ -42,11 +42,8 @@ FIELDS = tuple(_MM_RANGES) + tuple(_INT_RANGES) + tuple(_CHOICES) + _BOOLS + tup
 
 
 def template_path() -> Path:
-    if os.name == 'nt' and os.environ.get('APPDATA'):
-        base = Path(os.environ['APPDATA'])
-    else:
-        base = Path.home() / '.config'
-    return base / 'Impozycjoner Studio' / 'job_templates.json'
+    from user_data import data_dir  # APPDATA albo folder `dane` obok programu (tryb przenośny)
+    return data_dir() / 'job_templates.json'
 
 
 def _name(name: str) -> str:

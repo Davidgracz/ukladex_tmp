@@ -1,0 +1,5 @@
+Impozycjoner Studio - wersja przenosna (np. na pendrive).
+
+Gdy ten plik lezy obok programu, szablony prac i profile maszyn sa zapisywane
+w podfolderze "dane" obok programu, a nie w %APPDATA% komputera.
+Usun ten plik, jesli chcesz, aby program zapisywal dane na komputerze.
