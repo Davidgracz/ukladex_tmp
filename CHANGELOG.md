@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- „Kadruj do obszaru netto / brutto (netto + 3 mm spadu) i zapisz do pliku” in the net-size correction window and in
+  the page table menu: writes a new PDF where every page is cut to its TrimBox (or TrimBox + 3 mm), as vectors, with
+  the project's page corrections and resizes applied; TrimBox/BleedBox set on the new pages; missing bleed in the
+  file stays white and is reported; the source file is never overwritten; optionally the project row is switched to
+  the new file. H-43.
+
 - Custom marks from PDF files (U), modelled on the original's custom-marks window: files U1L/U1R (odd pages of the
   output PDF) and U2L/U2R (even pages), H and V in mm for odd and even pages (H from the left/right sheet edge, V from
   the bottom edge, both to the mark's top corner), a main switch and a draw switch per mark; a missing file means the

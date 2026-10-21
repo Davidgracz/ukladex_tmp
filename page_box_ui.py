@@ -2,11 +2,13 @@
 
 Odpowiednik okna Impozycjonera 4 „Korekta położenia i rozmiaru obszaru netto”: podgląd strony z ramką netto
 (przeciąganie myszą przesuwa ramkę), rozmiar i położenie w mm, zakres (ta strona / wszystkie / nieparzyste /
-parzyste, w pliku albo w całej tabeli), powrót do wartości z pliku i ustawienie rozmiaru użytka.
+parzyste, w pliku albo w całej tabeli), powrót do wartości z pliku i ustawienie rozmiaru użytka, kadrowanie pliku
+do obszaru netto albo brutto z zapisem do nowego pliku (engine.crop_to_file).
 Logika: page_boxes.py; zastosowanie w silniku: engine.apply_page_boxes (TrimBox tylko w pamięci).
 """
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 import tkinter as tk
 from tkinter import messagebox, ttk
@@ -103,13 +105,37 @@ class PageBoxDialog(tk.Toplevel):
         ttk.Label(body, text='Korekta obejmuje tylko strony o tym samym rozmiarze co ta strona (jak w Imp4).\n'
                              'Plik PDF na dysku się nie zmienia — korekta zapisuje się w projekcie.',
                   foreground='#66768a').grid(row=13, column=1, columnspan=2, sticky='w', pady=(6, 0))
+        crop = ttk.Frame(body)
+        crop.grid(row=14, column=0, columnspan=3, sticky='w', pady=(12, 0))
+        from engine import CROP_BLEED, CROP_GROSS, CROP_NET
+        ttk.Button(crop, text='Kadruj do obszaru netto (bez spadów) i zapisz do pliku…',
+                   command=lambda: self._crop(CROP_NET)).pack(anchor='w')
+        ttk.Button(crop, text=f'Kadruj do obszaru brutto (netto + {CROP_BLEED:g} mm spadu) i zapisz do pliku…',
+                   command=lambda: self._crop(CROP_GROSS)).pack(anchor='w', pady=(2, 0))
         actions = ttk.Frame(body)
-        actions.grid(row=14, column=0, columnspan=3, sticky='e', pady=(12, 0))
+        actions.grid(row=15, column=0, columnspan=3, sticky='e', pady=(12, 0))
         ttk.Button(actions, text='Anuluj', command=self.destroy).pack(side='right')
         ttk.Button(actions, text='Przywróć wartości z pliku', command=lambda: self._apply(reset=True)).pack(
             side='right', padx=6)
         ttk.Button(actions, text='Zastosuj', style='Accent.TButton', command=self._apply).pack(side='right')
         self._redraw()
+
+    def _crop(self, area):
+        """Kadrowanie całego pliku z ramką netto widoczną w oknie (zakres jak przy „Zastosuj”, tylko ten plik)."""
+        values = self._values()
+        try:
+            if values is None:
+                raise ValueError('Wpisz liczby (mm).')
+            box = pb.check_box(values, self.page_w, self.page_h)
+        except ValueError as exc:
+            messagebox.showerror('Kadruj i zapisz', str(exc), parent=self)
+            return
+        jobs = self.app.project.jobs
+        targets, _ = pb.plan_correction([file_page_sizes(job.path) for job in jobs], self.job_index, self.page,
+                                        self.scope.get(), False)
+        job = jobs[self.job_index]
+        source = replace(job, page_boxes=pb.apply(job.page_boxes, targets.get(self.job_index, []), box))
+        self.app.crop_and_save(area, self.job_index, parent=self, source=source)
 
     # --- ramka ---------------------------------------------------------------------------------------
     def _px(self, left, top, width, height):

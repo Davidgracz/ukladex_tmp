@@ -24,6 +24,7 @@ from economic_csv import write_economic_csv
 from crop_editor import CropEditor
 from ui_icons import draw as draw_icon
 from engine import RUN_MODES, RUN_ALL, gutter_notes, slug_notes, strip_notes, FILL_GROSS
+from engine import CROP_NET, CROP_GROSS, CROP_BLEED, crop_output_name, crop_to_file
 
 # Parametry znaczników (okna „definicji” w Imp4) trzymane poza polami wstęgi.
 MARK_PARAMS = ('mark_offset', 'mark_length', 'mark_width_pt',
@@ -1875,6 +1876,10 @@ class App(tk.Tk):
         menu.add_command(label='Zmień rozmiar zaznaczonych stron (skaluj)…', command=self.resize_pages)
         menu.add_command(label='Koryguj rozmiar strony (obszar netto)…', command=self.correct_page_size)
         menu.add_command(label='Ustaw rozmiar użytka równy rozmiarom zaznaczonej strony', command=self.use_page_size)
+        menu.add_command(label='Kadruj plik do obszaru netto (bez spadów) i zapisz…',
+                         command=lambda: self.crop_and_save(CROP_NET))
+        menu.add_command(label=f'Kadruj plik do obszaru brutto (netto + {CROP_BLEED:g} mm spadu) i zapisz…',
+                         command=lambda: self.crop_and_save(CROP_GROSS))
         menu.add_separator()
         menu.add_command(label='Pomiń zaznaczone strony w impozycji', command=lambda: self._skip_selected(True))
         menu.add_command(label='Przywróć zaznaczone strony do impozycji', command=lambda: self._skip_selected(False))
@@ -1927,6 +1932,42 @@ class App(tk.Tk):
             PageBoxDialog(self, job, page)
         except Exception as exc:
             messagebox.showerror('Korekta rozmiaru', str(exc), parent=self)
+
+    def crop_and_save(self, area, job_index=None, parent=None, source=None):
+        """„Kadruj do obszaru netto/brutto i zapisz do pliku” (okno korekty w Imp4): cały plik zaznaczonej strony."""
+        parent = parent or self
+        if job_index is None:
+            selection = self.files.selection()
+            if not selection:
+                messagebox.showinfo('Kadruj i zapisz', 'Zaznacz stronę pliku w tabeli.', parent=parent)
+                return
+            job_index, _ = table_actions.parse_row(selection[0])
+        job = self.project.jobs[job_index]
+        source = source or job          # okno korekty podaje pozycję z jeszcze niezastosowaną ramką netto
+        suggested = Path(crop_output_name(job.path, area))
+        output = filedialog.asksaveasfilename(parent=parent, title=f'Zapisz plik po kadrowaniu ({area})',
+                                              initialdir=str(suggested.parent), initialfile=suggested.name,
+                                              defaultextension='.pdf', filetypes=[('PDF', '*.pdf')])
+        if not output:
+            return
+        try:
+            pages, short = crop_to_file(source, output, area)
+        except Exception as exc:
+            messagebox.showerror('Kadruj i zapisz', str(exc), parent=parent)
+            return
+        text = f'Zapisano {pages} str. ({area}): {output}'
+        if short:
+            text += (f'\n\n{short} str. nie ma w pliku pełnego spadu {CROP_BLEED:g} mm — brakująca część spadu jest '
+                     'biała (program nie dorabia grafiki).')
+        text += '\n\nZastąpić tym plikiem pozycję w projekcie? (korekty i zmiany rozmiaru stron są już w nowym pliku)'
+        if messagebox.askyesno('Kadruj i zapisz', text, parent=parent):
+            job.path = output
+            job.page_boxes = {}
+            job.page_sizes = {}
+            self._page_size_cache.clear()
+            self._render_jobs(job_index)
+            self.side_index = 0
+            self.refresh()
 
     def use_page_size(self):
         selection = self.files.selection()
