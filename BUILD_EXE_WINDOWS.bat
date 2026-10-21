@@ -25,7 +25,7 @@ echo [Impozycjoner] Ikona ...
 ".venv\Scripts\python.exe" scripts\make_icon.py build\impozycjoner.ico
 if errorlevel 1 goto ERROR
 
-set "COMMON=--noconfirm --clean --windowed --name Impozycjoner-Studio --icon build\impozycjoner.ico --collect-all pymupdf --hidden-import sheet_editor --hidden-import whitecrop --hidden-import tools_ui --hidden-import table_actions --hidden-import user_data --add-data assets;assets"
+set "COMMON=--noconfirm --clean --windowed --name Impozycjoner-Studio --icon build\impozycjoner.ico --collect-all pymupdf --hidden-import sheet_editor --hidden-import whitecrop --hidden-import tools_ui --hidden-import table_actions --hidden-import user_data --hidden-import page_boxes --hidden-import page_box_ui --add-data assets;assets"
 
 echo [Impozycjoner] Budowanie folderu programu ...
 ".venv\Scripts\python.exe" -m PyInstaller %COMMON% --onedir app.py

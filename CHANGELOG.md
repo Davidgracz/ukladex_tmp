@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Page size correction in the page table (right click → „Koryguj rozmiar strony (obszar netto)…”), modelled on the
+  Imp4 window „Korekta położenia i rozmiaru obszaru netto” (UI texts + REA call metadata): page preview with a
+  movable net frame, width/height and position in mm, scope this page / all / odd / even, in the file or the whole
+  table, only pages of the same size as the corrected one (others listed), restore from file, set the use size.
+  Stored per file in the project (`page_boxes`, optional); the TrimBox is applied in memory when PDFs are opened,
+  so imposition, single pages, preflight and preview use it while the PDF on disk stays unchanged. Corrected sizes
+  are marked with * in the table. Tests: `tests/test_page_boxes.py`.
+
 - Mixed page sizes in one PDF (A4/A3/A5/landscape/A6) scaled to A5 or A6: new option „obracaj strony do orientacji
   użytku” (Kadrowanie PDF) turns a landscape page on a portrait use (and vice versa) by 90° instead of shrinking it
   (Dopasuj) or cutting half of it off (Wypełnij). Also accepted in „Bez skalowania”, refused with „Kadruj 1:1”;
