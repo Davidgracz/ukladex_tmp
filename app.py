@@ -1145,6 +1145,11 @@ class App(tk.Tk):
                 corrected = j.page_boxes.get(str(page + 1))
                 if corrected:  # rozmiar netto skorygowany w projekcie (TrimBox z pliku bez zmian)
                     w, h, mark = corrected[2], corrected[3], '*'
+                resized = j.page_sizes.get(str(page + 1))
+                if resized:  # strona przeskalowana do nowego rozmiaru TrimBox
+                    import page_boxes
+                    w, h, _ = page_boxes.resize_plan(w, h, resized)
+                    mark = '*'
                 self.files.insert('', 'end', iid=f'{i}:{page}',
                                   values=(total if role != ROLE_SKIP else '–', page+1, name,
                                           f'{w:.1f}'.rstrip('0').rstrip('.') + mark,
@@ -1786,6 +1791,7 @@ class App(tk.Tk):
         menu.add_command(label='Odwróć zaznaczenie', command=lambda: self._select_rows(table_actions.SELECT_INVERT))
         menu.add_separator()
         menu.add_command(label='Znajdź pierwszy arkusz z tą stroną', command=self.find_first_sheet)
+        menu.add_command(label='Zmień rozmiar zaznaczonych stron (skaluj)…', command=self.resize_pages)
         menu.add_command(label='Koryguj rozmiar strony (obszar netto)…', command=self.correct_page_size)
         menu.add_command(label='Ustaw rozmiar użytka równy rozmiarom zaznaczonej strony', command=self.use_page_size)
         menu.add_separator()
@@ -1816,6 +1822,18 @@ class App(tk.Tk):
             return
         self.go_to_side(index)
 
+    def resize_pages(self):
+        """Skaluj zaznaczone strony do podanego rozmiaru TrimBox (jak zmiana Szer./Wys. wierszy w Impozycjonerze)."""
+        rows = [table_actions.parse_row(iid) for iid in self.files.selection()]
+        if not rows:
+            messagebox.showinfo('Zmień rozmiar stron', 'Zaznacz strony w tabeli (Ctrl/Shift — kilka).', parent=self)
+            return
+        try:
+            from page_box_ui import ResizeDialog
+            ResizeDialog(self, rows)
+        except Exception as exc:
+            messagebox.showerror('Zmień rozmiar stron', str(exc), parent=self)
+
     def correct_page_size(self):
         """Korekta rozmiaru i położenia netto strony (jak „Koryguj odczytane rozmiary…” w Imp4)."""
         selection = self.files.selection()
@@ -1842,6 +1860,10 @@ class App(tk.Tk):
         corrected = self.project.jobs[job].page_boxes.get(str(page + 1))
         if corrected:  # rozmiar po korekcie netto ma pierwszeństwo przed TrimBox z pliku
             w, h = round(corrected[2], 2), round(corrected[3], 2)
+        resized = self.project.jobs[job].page_sizes.get(str(page + 1))
+        if resized:  # strona przeskalowana: liczy się nowy TrimBox
+            import page_boxes
+            w, h = (round(v, 2) for v in page_boxes.resize_plan(w, h, resized)[:2])
         try:  # spad zostaje taki sam, brutto idzie za netto (jak przy presetach formatu)
             gap = max(0, (float(self.variables['gross_w'].get().replace(',', '.')) -
                           float(self.variables['trim_w'].get().replace(',', '.'))) / 2)

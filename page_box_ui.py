@@ -197,3 +197,111 @@ class PageBoxDialog(tk.Toplevel):
         self.app.refresh()
         self.destroy()
         messagebox.showinfo('Korekta rozmiaru strony', message, parent=self.app)
+
+
+class ResizeDialog(tk.Toplevel):
+    """„Zmień rozmiar zaznaczonych stron” — jak „Zmień parametry w zaznaczonych wierszach” w Impozycjonerze
+    (Szerokość / Wysokość) z opcjami okna „Automatyczna konwersja bitmap do PDF” (sposób, orientacja, spad)."""
+
+    def __init__(self, app, rows: list[tuple[int, int]]):
+        super().__init__(app)
+        self.app, self.rows = app, rows
+        self.title('Zmień rozmiar zaznaczonych stron')
+        self.transient(app)
+        self.resizable(False, False)
+        body = ttk.Frame(self, padding=14)
+        body.pack(fill='both', expand=True)
+        first = app.project.jobs[rows[0][0]].page_sizes.get(str(rows[0][1] + 1)) or {}
+        s = app._read_fields()
+        ttk.Label(body, text=f'Zaznaczone strony: {len(rows)}', style='Header.TLabel').grid(
+            row=0, column=0, columnspan=3, sticky='w', pady=(0, 6))
+        ttk.Label(body, text='Sposób określania szerokości i wysokości:').grid(row=1, column=0, columnspan=3, sticky='w')
+        self.mode = tk.StringVar(value=first.get('mode', pb.RESIZE_STRETCH))
+        self.crop = tk.BooleanVar(value=self.mode.get() == pb.RESIZE_CROP)
+        if self.mode.get() == pb.RESIZE_CROP:
+            self.mode.set(pb.RESIZE_STRETCH)
+        ttk.Radiobutton(body, text='Szerokość i wysokość: niezależnie', value=pb.RESIZE_STRETCH, variable=self.mode,
+                        command=self._states).grid(row=2, column=0, columnspan=3, sticky='w')
+        self.crop_box = ttk.Checkbutton(body, text='Włącz kadrowanie (zachowaj proporcje, przytnij nadmiar)',
+                                        variable=self.crop)
+        self.crop_box.grid(row=3, column=0, columnspan=3, sticky='w', padx=(22, 0))
+        ttk.Radiobutton(body, text=pb.RESIZE_WIDTH, value=pb.RESIZE_WIDTH, variable=self.mode,
+                        command=self._states).grid(row=4, column=0, columnspan=3, sticky='w')
+        ttk.Radiobutton(body, text=pb.RESIZE_HEIGHT, value=pb.RESIZE_HEIGHT, variable=self.mode,
+                        command=self._states).grid(row=5, column=0, columnspan=3, sticky='w')
+        ttk.Label(body, text='Nowa szerokość i wysokość TrimBox:').grid(row=6, column=0, columnspan=3, sticky='w',
+                                                                        pady=(8, 0))
+        self.w = tk.StringVar(value=f'{first.get("w", s.trim_w):g}')
+        self.h = tk.StringVar(value=f'{first.get("h", s.trim_h):g}')
+        ttk.Label(body, text='Szerokość [mm]:').grid(row=7, column=0, sticky='w')
+        self.w_entry = ttk.Spinbox(body, textvariable=self.w, from_=1, to=5000, increment=0.5, width=9)
+        self.w_entry.grid(row=7, column=1, sticky='w', padx=6)
+        ttk.Label(body, text='Wysokość [mm]:').grid(row=8, column=0, sticky='w')
+        self.h_entry = ttk.Spinbox(body, textvariable=self.h, from_=1, to=5000, increment=0.5, width=9)
+        self.h_entry.grid(row=8, column=1, sticky='w', padx=6)
+        quick = ttk.Frame(body)
+        quick.grid(row=7, column=2, rowspan=2, sticky='w')
+        ttk.Button(quick, text='= netto użytku', command=lambda: self._preset(False)).pack(fill='x')
+        ttk.Button(quick, text='= brutto (netto + 2 × spad)', command=lambda: self._preset(True)).pack(fill='x', pady=(2, 0))
+        self.keep = tk.BooleanVar(value=first.get('keep_orientation', True))
+        ttk.Checkbutton(body, text='Zachowaj orientację (pion/poziom)', variable=self.keep).grid(
+            row=9, column=0, columnspan=3, sticky='w', pady=(8, 0))
+        self.bleed_on = tk.BooleanVar(value=first.get('bleed', 0) > 0)
+        self.bleed = tk.StringVar(value=f'{first.get("bleed", 0) or 3:g}')
+        row = ttk.Frame(body)
+        row.grid(row=10, column=0, columnspan=3, sticky='w')
+        ttk.Checkbutton(row, text='Definiuj spad [mm]:', variable=self.bleed_on).pack(side='left')
+        ttk.Spinbox(row, textvariable=self.bleed, from_=0, to=50, increment=0.5, width=6).pack(side='left', padx=6)
+        ttk.Label(body, text='Strona jest skalowana wektorowo, tak że TrimBox ma podany rozmiar. Spad wypełnia\n'
+                             'grafika źródła spoza TrimBox (jeśli jest). Plik PDF na dysku się nie zmienia.',
+                  foreground='#66768a').grid(row=11, column=0, columnspan=3, sticky='w', pady=(8, 0))
+        actions = ttk.Frame(body)
+        actions.grid(row=12, column=0, columnspan=3, sticky='e', pady=(12, 0))
+        ttk.Button(actions, text='Anuluj', command=self.destroy).pack(side='right')
+        ttk.Button(actions, text='Przywróć rozmiar z pliku', command=lambda: self._apply(None)).pack(side='right', padx=6)
+        ttk.Button(actions, text='Zmień', style='Accent.TButton', command=self._submit).pack(side='right')
+        self._states()
+
+    def _states(self):
+        mode = self.mode.get()
+        self.crop_box.configure(state='normal' if mode == pb.RESIZE_STRETCH else 'disabled')
+        self.w_entry.configure(state='disabled' if mode == pb.RESIZE_HEIGHT else 'normal')
+        self.h_entry.configure(state='disabled' if mode == pb.RESIZE_WIDTH else 'normal')
+
+    def _preset(self, gross: bool):
+        s = self.app._read_fields()
+        extra = 0.0
+        if gross:
+            from engine import bleed_for
+            extra = 2 * bleed_for(s)
+        self.w.set(f'{s.trim_w + extra:g}')
+        self.h.set(f'{s.trim_h + extra:g}')
+
+    def _submit(self):
+        mode = self.mode.get()
+        if mode == pb.RESIZE_STRETCH and self.crop.get():
+            mode = pb.RESIZE_CROP
+        try:
+            w = float(self.w.get().replace(',', '.')) if mode != pb.RESIZE_HEIGHT else 1.0
+            h = float(self.h.get().replace(',', '.')) if mode != pb.RESIZE_WIDTH else 1.0
+            bleed = float(self.bleed.get().replace(',', '.')) if self.bleed_on.get() else 0.0
+            spec = pb.resize_spec(w, h, mode, self.keep.get(), bleed)
+        except ValueError as exc:
+            messagebox.showerror('Zmień rozmiar stron', str(exc) if 'could not convert' not in str(exc)
+                                 else 'Wpisz liczby (mm).', parent=self)
+            return
+        self._apply(spec)
+
+    def _apply(self, spec):
+        jobs = self.app.project.jobs
+        for job_index, page_index in self.rows:
+            sizes = dict(jobs[job_index].page_sizes)
+            if spec is None:
+                sizes.pop(str(page_index + 1), None)
+            else:
+                sizes[str(page_index + 1)] = dict(spec)
+            jobs[job_index].page_sizes = sizes
+        self.app._render_jobs(self.rows[0][0])
+        self.app.side_index = 0
+        self.app.refresh()
+        self.destroy()
