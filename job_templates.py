@@ -7,7 +7,7 @@ Kalibracja pozostaje w profilach maszyn (duplex_calibration.py). Szablon może
 tylko wskazać NAZWĘ profilu maszyny, który program wczyta razem z szablonem.
 
 Szablony użytkownika leżą poza plikami projektów, w APPDATA (Windows):
-%APPDATA%\\Impozycjoner Studio\\job_templates.json. Szablony wbudowane są
+%APPDATA%\\ImpoCraft\\job_templates.json. Szablony wbudowane są
 tylko do odczytu i służą jako punkty startowe.
 Moduł nie importuje silnika PDF, więc da się go używać bez PyMuPDF.
 """

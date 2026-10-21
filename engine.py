@@ -1,4 +1,4 @@
-"""Impozycjoner Studio 0.4.1 - vector PDF imposition engine.
+"""ImpoCraft (dawniej Impozycjoner Studio) - vector PDF imposition engine.
 
 Uses PDF form XObjects via PyMuPDF. No source pages are rasterized during export.
 Units exposed to the operator are millimetres; PyMuPDF operates in points.
@@ -15,6 +15,7 @@ import json
 import zipfile
 
 import marks as marks_rules
+from app_info import APP_NAME, TITLE as APP_TITLE
 
 import pymupdf as fitz
 
@@ -1582,7 +1583,7 @@ def output_metadata(output: str, fields: dict[str, str]) -> dict[str, str]:
         raise ValueError(f'Nieznane pole metadanych: {", ".join(sorted(unknown))}')
     name = Path(output).stem
     result = {key: (str(fields.get(key) or '').strip() or name) for key in METADATA_FIELDS}
-    result['creator'] = 'Impozycjoner Studio 0.4.1'
+    result['creator'] = APP_TITLE
     return result
 
 
@@ -1609,8 +1610,8 @@ def export_pdf(project: Project, output: str, metadata: dict[str, str] | None = 
             raise ValueError('Brak stron do montażu' if run_mode == RUN_ALL
                              else f'Brak arkuszy do wykonania w trybie „{run_mode}”')
         out.set_metadata(output_metadata(output, metadata) if metadata is not None else
-                         {'title':'Impozycjoner Studio - montaż PDF',
-                          'creator':'Impozycjoner Studio 0.4.1'})
+                         {'title':f'{APP_NAME} - montaż PDF',
+                          'creator':APP_TITLE})
         Path(output).parent.mkdir(parents=True, exist_ok=True)
         out.save(output, garbage=3, deflate=True)
         return count
@@ -1647,8 +1648,8 @@ def export_pages(project: Project, output: str, metadata: dict[str, str] | None 
         if len(out) == 0:
             raise ValueError('Brak stron do eksportu')
         out.set_metadata(output_metadata(output, metadata) if metadata is not None else
-                         {'title':'Impozycjoner Studio - strony w formacie docelowym',
-                          'creator':'Impozycjoner Studio 0.4.1'})
+                         {'title':f'{APP_NAME} - strony w formacie docelowym',
+                          'creator':APP_TITLE})
         Path(output).parent.mkdir(parents=True, exist_ok=True)
         out.save(output, garbage=3, deflate=True)
         return len(out)

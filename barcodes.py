@@ -159,7 +159,7 @@ def export_pdf(codes: list[str], output: str, style: BarcodeStyle = BarcodeStyle
             w, h = symbol_size(code, style)
             page = out.new_page(width=pt(w), height=pt(h + 2))
             draw(page, 0, 1, code, style)
-        out.set_metadata({'title': 'Kody EAN', 'creator': 'Impozycjoner Studio'})
+        out.set_metadata({'title': 'Kody EAN', 'creator': 'ImpoCraft'})
         Path(output).parent.mkdir(parents=True, exist_ok=True)
         out.save(output, garbage=3, deflate=True)
         return len(out)

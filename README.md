@@ -1,18 +1,38 @@
+# ImpoCraft — instalator Windows
+
+Autor: **Dawid Gracz**. ImpoCraft to dalszy rozwój Impozycjonera Studio (te same projekty `.psimp`, te same funkcje).
+
+1. Uruchom **`BUILD_INSTALLER_WINDOWS.bat`** (dwuklik). Wymaga Inno Setup 6 — jeśli go nie ma, skrypt podpowie:
+   `winget install --id JRSoftware.InnoSetup -e`. Skrypt buduje i testuje EXE (jak niżej), potem tworzy
+   **`dist\ImpoCraft-<wersja>-instalator.exe`**.
+2. Instalator: Program Files (dla wszystkich użytkowników, w oknie można wybrać tylko siebie), skrót w menu Start,
+   opcjonalnie na pulpicie, skojarzenie plików `.psimp`, wpis w „Aplikacje i funkcje” (wydawca: Dawid Gracz)
+   i deinstalator. Zainstalowany program zapisuje szablony i profile w `%APPDATA%\ImpoCraft`; dane sprzed zmiany
+   nazwy (`%APPDATA%\Impozycjoner Studio`) kopiuje przy pierwszym uruchomieniu.
+3. Plik EXE i instalator mają we Właściwościach → Szczegóły: produkt ImpoCraft, firmę i prawa autorskie Dawida Gracza,
+   wersję z `app_info.py` (jedno miejsce na nazwę, wersję i autora).
+4. **Podpis cyfrowy.** Bez podpisu Windows SmartScreen pokaże „Nieznany wydawca”. Żeby pokazywał „Dawid Gracz”, potrzebny
+   jest certyfikat podpisywania kodu (Code Signing) z urzędu certyfikacji — wydawany na osobę lub firmę po weryfikacji
+   tożsamości (np. Certum, SSL.com, Sectigo; zwykle na tokenie USB) albo usługa Azure Trusted Signing. Gdy go masz,
+   zainstaluj Windows SDK (signtool) i przed budowaniem ustaw w swojej konsoli `IMPOCRAFT_SIGN_THUMBPRINT` (odcisk
+   certyfikatu z tokenu/magazynu) albo `IMPOCRAFT_SIGN_PFX` i `IMPOCRAFT_SIGN_PASSWORD`. Skrypt podpisze EXE i instalator
+   (SHA-256 + znacznik czasu). Hasła ani certyfikatu nie zapisuj w repozytorium. Szczegóły: `scripts/sign_files.py`.
+
 # Wersja przenośna (pendrive) — budowanie EXE
 
 1. Na komputerze z Pythonem uruchom **`BUILD_EXE_WINDOWS.bat`** (dwuklik). Skrypt: tworzy `.venv`, instaluje biblioteki
    i PyInstaller, uruchamia testy (gdy któryś nie przejdzie — EXE nie powstaje), buduje program, sprawdza zbudowany EXE
    (`--self-test`: okno, montaż ze znacznikami, preflight, programy dodatkowe) i pakuje ZIP.
-2. Wynik: folder **`dist\Impozycjoner-Studio`** oraz **`dist\Impozycjoner-Studio-przenosny.zip`**. Skopiuj cały folder
-   (albo rozpakuj ZIP) na pendrive i uruchom `Impozycjoner-Studio.exe` — na docelowym komputerze nie trzeba instalować
+2. Wynik: folder **`dist\ImpoCraft`** oraz **`dist\ImpoCraft-przenosny.zip`**. Skopiuj cały folder
+   (albo rozpakuj ZIP) na pendrive i uruchom `ImpoCraft.exe` — na docelowym komputerze nie trzeba instalować
    Pythona ani niczego innego.
 3. Tryb przenośny: obok EXE leży `PORTABLE.txt`, więc szablony prac i profile maszyn zapisują się w podfolderze `dane`
    na pendrivie (nie w `%APPDATA%` komputera). Usuń `PORTABLE.txt`, jeśli wolisz zapis na komputerze.
    Folder `przyklady` zawiera przykładowe PDF-y i projekty `.psimp`.
-4. `BUILD_EXE_WINDOWS.bat jedenplik` — dodatkowo jeden plik `dist\jeden-plik\Impozycjoner-Studio.exe` (wygodny, ale
+4. `BUILD_EXE_WINDOWS.bat jedenplik` — dodatkowo jeden plik `dist\jeden-plik\ImpoCraft.exe` (wygodny, ale
    wolniej startuje, bo przy każdym uruchomieniu rozpakowuje się do folderu tymczasowego). Zalecany jest folder.
 
-Szybkie sprawdzenie zbudowanego programu w dowolnym momencie: `Impozycjoner-Studio.exe --self-test raport.txt`
+Szybkie sprawdzenie zbudowanego programu w dowolnym momencie: `ImpoCraft.exe --self-test raport.txt`
 (raport zaczyna się od „OK” albo „BŁĄD”).
 
 ---
@@ -167,7 +187,7 @@ Rozwijana **wersja alpha** niezależnej, darmowej aplikacji do impozycji PDF, wz
 2. Rozpakuj ZIP do folderu na komputerze.
 3. Kliknij dwukrotnie **`START_WINDOWS.bat`**. Plik automatycznie instaluje zależności i uruchamia aplikację. Przy kolejnych uruchomieniach korzysta z tego samego środowiska.
 4. Jeśli pip jest nieobecny w `.venv`, launcher sam spróbuje `ensurepip`, a w razie potrzeby odtworzy środowisko. Skrypt `BOOTSTRAP_WINDOWS.bat` służy do samego przygotowania/naprawy środowiska.
-5. Aby wygenerować własny katalog z plikiem .exe uruchom **`BUILD_EXE_WINDOWS.bat`**, potem `dist/Impozycjoner-Studio/Impozycjoner-Studio.exe`.
+5. Aby wygenerować własny katalog z plikiem .exe uruchom **`BUILD_EXE_WINDOWS.bat`**, potem `dist/ImpoCraft/ImpoCraft.exe`.
 
 ## Co jest dostępne
 

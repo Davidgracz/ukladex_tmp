@@ -1,4 +1,4 @@
-"""Impozycjoner Studio - desktop operator UI (Tkinter, Windows friendly)."""
+"""ImpoCraft - desktop operator UI (Tkinter, Windows friendly)."""
 from __future__ import annotations
 
 from dataclasses import replace
@@ -8,6 +8,7 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from PIL import ImageTk
 import pymupdf as fitz
+import app_info
 
 from engine import Job, Project, Settings, SourcePage, open_sources, economic_report, project_sides, assign_slot, swap_slots, export_pdf, export_pages, geometry, load_project, preview, save_project, source_summary, validate, bleed_for, gross_dimensions, mm, PAGE_ROLES, ROLE_AUTO, ROLE_SKIP
 from job_templates import (BUILTIN, apply_template, is_builtin, list_templates, read_template,
@@ -168,7 +169,7 @@ PRESETS = {
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title('Impozycjoner Studio 0.4.1')
+        self.title(app_info.TITLE)
         self.geometry('1600x900')
         self.minsize(1220, 720)
         self.configure(background=BG)
@@ -377,7 +378,7 @@ class App(tk.Tk):
 
         bottom = ttk.Frame(self.imposition_tab, padding=(8, 3))
         bottom.pack(fill='x')
-        ttk.Label(bottom, text='Impozycjoner Studio 0.4.1', foreground=MUTED).pack(side='left')
+        ttk.Label(bottom, text=f'{app_info.TITLE} · {app_info.COPYRIGHT}', foreground=MUTED).pack(side='left')
         ttk.Label(bottom, textvariable=self.stats_text, foreground=MUTED).pack(side='left', padx=18)
         ttk.Label(bottom, textvariable=self.status_text, foreground=MUTED).pack(side='right')
 
@@ -1901,7 +1902,7 @@ class App(tk.Tk):
 
     def save_project(self, ask=False):
         path=(None if ask else self.project_filename) or filedialog.asksaveasfilename(defaultextension='.psimp',
-                      filetypes=[('Projekt Impozycjonera','*.psimp')])
+                      filetypes=[('Projekt ImpoCraft','*.psimp')])
         if not path:return
         try:
             self.project.settings=self._read_fields()
@@ -1912,8 +1913,9 @@ class App(tk.Tk):
         except Exception as e:
             messagebox.showerror('Błąd zapisu',str(e))
 
-    def load_project(self):
-        path=filedialog.askopenfilename(filetypes=[('Projekt Impozycjonera','*.psimp')])
+    def load_project(self, path=None):
+        """Otwiera projekt; bez ścieżki pyta o plik (ścieżka przychodzi np. z dwukliku w pliku .psimp)."""
+        path=path or filedialog.askopenfilename(filetypes=[('Projekt ImpoCraft','*.psimp')])
         if not path:return
         try:
             self.project=load_project(path)
@@ -1936,7 +1938,7 @@ class App(tk.Tk):
             messagebox.showerror('Błąd preflight', str(exc))
             return
         window = tk.Toplevel(self)
-        window.title('Preflight PDF — Impozycjoner Studio')
+        window.title(f'Preflight PDF — {app_info.APP_NAME}')
         window.geometry('850x540')
         window.configure(bg=BG)
         window.transient(self)
@@ -2030,4 +2032,7 @@ if __name__=='__main__':
     if len(sys.argv) > 1 and sys.argv[1] == '--self-test':  # sprawdzenie zbudowanego EXE (scripts/check_exe.py)
         import selftest
         sys.exit(selftest.run(sys.argv[2] if len(sys.argv) > 2 else None))
-    App().mainloop()
+    app = App()
+    if len(sys.argv) > 1 and sys.argv[1].lower().endswith('.psimp'):
+        app.after(100, lambda: app.load_project(sys.argv[1]))
+    app.mainloop()

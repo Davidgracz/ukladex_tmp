@@ -12,16 +12,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_appdata_when_not_portable(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, 'frozen', True, raising=False)
-    monkeypatch.setattr(sys, 'executable', str(tmp_path / 'Impozycjoner-Studio.exe'))
+    monkeypatch.setattr(sys, 'executable', str(tmp_path / 'ImpoCraft.exe'))
     monkeypatch.setenv('APPDATA', str(tmp_path / 'roaming'))
     monkeypatch.setattr(user_data.os, 'name', 'nt')
     assert not user_data.is_portable()
-    assert user_data.data_dir() == tmp_path / 'roaming' / 'Impozycjoner Studio'
+    assert user_data.data_dir() == tmp_path / 'roaming' / 'ImpoCraft'
 
 
 def test_portable_marker_moves_data_next_to_exe(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, 'frozen', True, raising=False)
-    monkeypatch.setattr(sys, 'executable', str(tmp_path / 'Impozycjoner-Studio.exe'))
+    monkeypatch.setattr(sys, 'executable', str(tmp_path / 'ImpoCraft.exe'))
     (tmp_path / 'PORTABLE.txt').write_text('x', encoding='utf-8')
     assert user_data.is_portable()
     assert user_data.data_dir() == tmp_path / 'dane'
@@ -51,3 +51,24 @@ def test_self_test_passes(tmp_path):
     report = tmp_path / 'raport.txt'
     assert selftest.run(str(report)) == 0
     assert report.read_text(encoding='utf-8').startswith('OK')
+
+
+def test_data_from_old_program_name_is_copied_once(monkeypatch, tmp_path):
+    monkeypatch.setattr(sys, 'frozen', True, raising=False)
+    monkeypatch.setattr(sys, 'executable', str(tmp_path / 'prog' / 'ImpoCraft.exe'))
+    monkeypatch.setenv('APPDATA', str(tmp_path / 'roaming'))
+    monkeypatch.setattr(user_data.os, 'name', 'nt')
+    old = tmp_path / 'roaming' / 'Impozycjoner Studio'
+    old.mkdir(parents=True)
+    (old / 'job_templates.json').write_text('{"a": 1}', encoding='utf-8')
+    new = user_data.data_dir()
+    assert (new / 'job_templates.json').read_text(encoding='utf-8') == '{"a": 1}'
+    assert (old / 'job_templates.json').is_file()                 # stary folder nietknięty
+    (new / 'job_templates.json').write_text('{"b": 2}', encoding='utf-8')
+    assert (user_data.data_dir() / 'job_templates.json').read_text(encoding='utf-8') == '{"b": 2}'  # bez ponownej kopii
+
+
+def test_app_identity():
+    import app_info
+    assert app_info.APP_NAME == 'ImpoCraft' and app_info.AUTHOR == 'Dawid Gracz'
+    assert len(app_info.version_tuple()) == 4 and app_info.VERSION in app_info.TITLE

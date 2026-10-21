@@ -1,4 +1,4 @@
-"""Szybki test działania programu (także zbudowanego EXE): `Impozycjoner-Studio.exe --self-test raport.txt`.
+"""Szybki test działania programu (także zbudowanego EXE): `ImpoCraft.exe --self-test raport.txt`.
 
 Tworzy próbny PDF w folderze tymczasowym, robi montaż ze znacznikami, preflight, programy dodatkowe,
 buduje i zamyka okno programu. Raport zaczyna się od „OK” albo „BŁĄD”. Nie zmienia danych użytkownika.
