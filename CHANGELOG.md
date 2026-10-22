@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- „Programy dodatkowe” redesigned: tiles with drawn icons in categories (split and merge, choose and delete pages,
+  order and rotation, format/bleed/cutting, codes), two columns; the selected tool gets a header with a large
+  icon, name and description.
+- New tool „Usuń wybrane strony”: a new PDF without the given pages (same order, vector, source untouched;
+  deleting every page is refused). H-51.
+
 ## 0.5.5
 
 Nowości i poprawki w ImpoCraft 0.5.5:

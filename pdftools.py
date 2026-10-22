@@ -111,6 +111,23 @@ def extract(path: str, folder: str, pages_text: str, each_separately: bool = Fal
         return written
 
 
+def delete_pages(path: str, output: str, pages_text: str) -> list[str]:
+    """Usuń wybrane strony: nowy plik bez stron z zakresu (kolejność pozostałych bez zmian, wektorowo).
+
+    Na życzenie użytkownika (H-51). Zakres wymagany; usunięcie wszystkich stron jest odrzucane.
+    Plik źródłowy nie jest zmieniany.
+    """
+    if not pages_text or not pages_text.strip():
+        raise ValueError('Podaj strony do usunięcia, np. 2, 5-7, 10-')
+    with _open(path) as doc:
+        count = len(doc)
+        chosen = set(pageops.parse_page_ranges(pages_text, count))
+        rest = [n for n in range(1, count + 1) if n not in chosen]
+        if not rest:
+            raise ValueError('Nie można usunąć wszystkich stron — plik byłby pusty')
+        return [_write(doc, rest, Path(output), [path])]
+
+
 def extract_even_odd(path: str, folder: str) -> list[str]:
     with _open(path) as doc:
         odd, even = pageops.even_odd(len(doc))

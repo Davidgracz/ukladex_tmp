@@ -125,3 +125,83 @@ def draw(name, size=30):
     else:
         raise ValueError(f'Nieznana ikona: {name}')
     return img.resize((size, size), Image.Resampling.LANCZOS)
+
+
+RED = (214, 69, 65)
+GREEN = (46, 160, 67)
+
+
+def draw_tool(name, size=32):
+    """Ikony programów dodatkowych (kafelki menu w zakładce „Programy dodatkowe”)."""
+    img, n = _canvas(size)
+    d = ImageDraw.Draw(img)
+    u = n / 30
+    w = SCALE * 2
+    if name == 'split':        # jedna strona → kilka plików
+        _page(d, (2*u, 6*u, 12*u, 20*u))
+        _arrow(d, (13*u, 13*u), (18*u, 13*u), int(1.6*u))
+        for k in range(3):
+            _page(d, ((19 + k*3)*u, (4 + k*5)*u, (27 + k)*u, (11 + k*5)*u), fold=False)
+    elif name == 'merge':      # kilka stron → jeden plik
+        for k in range(3):
+            _page(d, ((2 + k)*u, (4 + k*7)*u, (10 + k)*u, (10 + k*7)*u), fold=False)
+        _arrow(d, (13*u, 15*u), (18*u, 15*u), int(1.6*u))
+        _page(d, (19*u, 5*u, 28*u, 25*u))
+    elif name == 'extract':    # zaznaczone strony z pliku
+        _page(d, (3*u, 3*u, 19*u, 27*u))
+        for y in (8, 14, 20):
+            d.rectangle((6*u, y*u, 16*u, (y + 3)*u), fill=INK if y == 14 else BACK)
+        _arrow(d, (19*u, 15.5*u), (27*u, 15.5*u), int(1.6*u))
+    elif name == 'evenodd':
+        for k, c in enumerate((INK, BACK, INK, BACK)):
+            _page(d, ((2 + k*6.5)*u, 8*u, (8 + k*6.5)*u, 22*u), fill=c, fold=False)
+    elif name == 'cover':      # okładka + wkład
+        _page(d, (2*u, 5*u, 14*u, 25*u), fill=INK, fold=False)
+        _page(d, (16*u, 5*u, 28*u, 25*u))
+    elif name == 'chunks':     # po N stron
+        for x in (2, 11, 20):
+            for k in range(2):
+                _page(d, ((x + k*2)*u, (8 + k*3)*u, (x + 6 + k*2)*u, (18 + k*3)*u), fold=False)
+    elif name == 'delete':     # strona przekreślona
+        _page(d, (5*u, 3*u, 22*u, 27*u))
+        d.line([(9*u, 9*u), (25*u, 25*u)], fill=RED, width=int(3*u))
+        d.line([(25*u, 9*u), (9*u, 25*u)], fill=RED, width=int(3*u))
+    elif name == 'rotate':
+        _page(d, (8*u, 8*u, 22*u, 26*u))
+        d.arc((3*u, 2*u, 27*u, 26*u), 200, 330, fill=INK, width=int(2.4*u))
+        d.polygon([(25*u, 6*u), (28*u, 12*u), (21*u, 11*u)], fill=INK)
+    elif name == 'duplicate':
+        for k in range(3):
+            _page(d, ((3 + k*5)*u, (3 + k*5)*u, (17 + k*5)*u, (17 + k*5)*u), fold=False)
+    elif name == 'shuffle':
+        _page(d, (3*u, 6*u, 13*u, 24*u), fold=False)
+        _page(d, (17*u, 6*u, 27*u, 24*u), fill=BACK, fold=False)
+        _arrow(d, (8*u, 3*u), (22*u, 3*u), int(1.4*u))
+        _arrow(d, (8*u, 27.5*u), (22*u, 27.5*u), int(1.4*u))
+    elif name == 'bleed':      # strona z dodanym pasem spadu
+        d.rectangle((3*u, 3*u, 27*u, 27*u), fill=(214, 228, 245), outline=INK, width=w)
+        _page(d, (7*u, 7*u, 23*u, 23*u), fold=False)
+    elif name == 'scale':
+        _page(d, (2*u, 14*u, 12*u, 27*u), fold=False)
+        d.rectangle((2*u, 3*u, 27*u, 27*u), outline=INK, width=w)
+        _arrow(d, (13*u, 13*u), (24*u, 13*u), int(1.4*u))
+    elif name == 'grid':       # plakat na kafle
+        for c in range(2):
+            for r in range(2):
+                d.rectangle(((3 + c*12.5)*u, (4 + r*11.5)*u, (14 + c*12.5)*u, (14 + r*11.5)*u),
+                            fill=PAPER, outline=DARK, width=w)
+        d.rectangle((14*u, 4*u, 15.5*u, 26*u), fill=(214, 228, 245))
+    elif name == 'spreads':    # rozkładówka cięta na dwie strony
+        _page(d, (2*u, 7*u, 14*u, 23*u), fold=False)
+        _page(d, (16*u, 7*u, 28*u, 23*u), fold=False)
+        d.line([(15*u, 3*u), (15*u, 27*u)], fill=RED, width=w)
+    elif name == 'barcode':
+        x = 4.0
+        for k, bar in enumerate((2, 1, 1, 3, 1, 2, 1, 1, 2, 1, 3, 1)):
+            if k % 2 == 0:
+                d.rectangle((x*u, 5*u, (x + bar)*u, 22*u), fill=DARK)
+            x += bar
+        d.rectangle((4*u, 24*u, 26*u, 26*u), fill=INK)
+    else:
+        raise ValueError(f'Nieznana ikona narzędzia: {name}')
+    return img.resize((size, size), Image.Resampling.LANCZOS)
