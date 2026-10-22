@@ -191,6 +191,8 @@ class Settings:
     reg2_h2: float = 3.0          # H1 + H2 = długość kreski poziomej
     reg2_pt: float = 0.25
     reg2_color: str = 'Rejestracyjny (100 % CMYK)'   # zob. marks.MARK_COLORS
+    # Łączenie plików wynikowych (naming.OUTPUT_MODES, H-48): domyślnie jeden plik, jak dotąd.
+    output_files: str = 'Jeden plik'
 
     def __post_init__(self):
         # JSON zapisuje krotki jako listy — wracamy do niezmiennej postaci (porównania, wartości domyślne).
@@ -364,6 +366,8 @@ def validate(settings: Settings):
         raise ValueError('Pasery w polu brutto, grubość [pt]: dozwolone 0,05–5')
     if settings.reg2_color not in marks_rules.MARK_COLORS:
         raise ValueError(f'Kolor paserów w polu brutto: {", ".join(marks_rules.MARK_COLORS)}')
+    import naming
+    naming.output_parts(settings.output_files)
     if not isinstance(settings.own_folder, str):
         raise ValueError('Znaczniki własne: folder musi być tekstem')
     for key, label in (('own_h1', 'H strony nieparzystej'), ('own_v1', 'V strony nieparzystej'),
@@ -1806,8 +1810,14 @@ def output_metadata(output: str, fields: dict[str, str]) -> dict[str, str]:
 
 
 def export_pdf(project: Project, output: str, metadata: dict[str, str] | None = None,
-               run_mode: str = RUN_ALL, active_sheet: int | None = None):
-    """Domyślnie (bez metadanych, wszystkie arkusze) zachowanie jest takie jak w 0.4.1."""
+               run_mode: str = RUN_ALL, active_sheet: int | None = None, sheet_numbers: list | None = None,
+               display_name: str | None = None):
+    """Domyślnie (bez metadanych, wszystkie arkusze) zachowanie jest takie jak w 0.4.1.
+
+    `sheet_numbers` (opcjonalnie) dostaje numer arkusza każdej zapisanej strony — dla podziału na pliki;
+    `display_name` — nazwa pliku w opisie arkusza i metadanych, gdy zapis idzie do pliku tymczasowego.
+    """
+    shown = display_name or output
     validate(project.settings)
     if not project.jobs:
         raise ValueError('Dodaj co najmniej jeden plik PDF')
@@ -1822,12 +1832,14 @@ def export_pdf(project: Project, output: str, metadata: dict[str, str] | None = 
                                  f'brakuje {audit.shortage}. Przywróć przypisania lub zamień użytki.')
         count = 0
         for side in select_sides(project_sides(project, sources), run_mode, active_sheet):
-            render_side(side, sources, project.settings, out, offsets, Path(output).name)
+            render_side(side, sources, project.settings, out, offsets, Path(shown).name)
+            if sheet_numbers is not None:
+                sheet_numbers.append(side.sheet_number)
             count += 1
         if count == 0:
             raise ValueError('Brak stron do montażu' if run_mode == RUN_ALL
                              else f'Brak arkuszy do wykonania w trybie „{run_mode}”')
-        out.set_metadata(output_metadata(output, metadata) if metadata is not None else
+        out.set_metadata(output_metadata(shown, metadata) if metadata is not None else
                          {'title':f'{APP_NAME} - montaż PDF',
                           'creator':APP_TITLE})
         Path(output).parent.mkdir(parents=True, exist_ok=True)
@@ -1837,6 +1849,60 @@ def export_pdf(project: Project, output: str, metadata: dict[str, str] | None = 
         out.close()
         for doc in sources.values():
             doc.close()
+
+
+def export_files(project: Project, output: str, metadata: dict[str, str] | None = None,
+                 run_mode: str = RUN_ALL, active_sheet: int | None = None) -> list[str]:
+    """Montaż zapisany wg „Łączenie plików wynikowych” (Settings.output_files, H-48).
+
+    Jeden plik = `output` (jak dotąd); arkusze = `<nazwa>--arkusz-NN.pdf` (przód i tył arkusza razem);
+    każda strona = `<nazwa>--NN.pdf`. Pliki obok `output`. Zwraca listę zapisanych plików.
+    """
+    import naming
+    one, sheets, pages = naming.output_parts(project.settings.output_files)
+    if one and not (sheets or pages):
+        export_pdf(project, output, metadata, run_mode, active_sheet)
+        return [output]
+    target = Path(output)
+    inputs = [job.path for job in project.jobs]
+    numbers: list[int] = []
+    combined = target.with_name(target.stem + '.tmp-montaz.pdf')
+    export_pdf(project, str(combined), metadata, run_mode, active_sheet, sheet_numbers=numbers,
+               display_name=str(target))
+    written: list[str] = []
+    try:
+        with fitz.open(str(combined)) as doc:
+            meta = doc.metadata
+
+            def save(page_indexes: list[int], name: str):
+                problem = naming.output_name_problem(name, inputs)
+                if problem:
+                    raise ValueError(problem)
+                part = fitz.open()
+                try:
+                    for index in page_indexes:
+                        part.insert_pdf(doc, from_page=index, to_page=index)
+                    part.set_metadata(meta)
+                    path = target.with_name(name)
+                    part.save(str(path), garbage=3, deflate=True)
+                finally:
+                    part.close()
+                written.append(str(path))
+
+            if sheets:
+                order = list(dict.fromkeys(numbers))
+                for n, sheet in enumerate(order, start=1):
+                    save([i for i, s in enumerate(numbers) if s == sheet],
+                         naming.sheet_file_name(target.name, n, len(order)))
+            if pages:
+                for i in range(len(doc)):
+                    save([i], naming.page_file_name(target.name, i + 1, len(doc)))
+        if one:
+            combined.replace(target)
+            written.insert(0, str(target))
+    finally:
+        combined.unlink(missing_ok=True)
+    return written
 
 
 def export_pages(project: Project, output: str, metadata: dict[str, str] | None = None) -> int:
