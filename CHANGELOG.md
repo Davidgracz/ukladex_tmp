@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Suggested output file name (ImpoCraft's own rule, requested by the user — not from the original):
+  `<source file name>_<net width>x<net height>mm_impozycja.pdf` (single-page export: `…_strony.pdf`), e.g.
+  `wizytowki_93x53mm_impozycja.pdf`, in the folder of the first source file; decimal comma (`105x148,5mm`),
+  forbidden characters replaced by `_`. The „--IMPOZYCJONER” phrase option still works on top of it.
+
 - Extra programs „Rozetnij strony PDF” (columns × rows, page range, overlap tabs left/right and top/bottom,
   tab marks with length, width and CMYK colour, optional tab labels) and „Rozetnij rozkładówki” (single page
   size given or read from the first page TrimBox, optional splitting of the first/last page, TrimBox and bleed

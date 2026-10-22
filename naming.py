@@ -38,3 +38,24 @@ def add_imposition_phrase(name: str) -> str:
     if stem.endswith(IMPOSITION_PHRASE):
         return stem + extension
     return stem + IMPOSITION_PHRASE + extension
+
+
+IMPOSITION_SUFFIX = 'impozycja'
+PAGES_SUFFIX = 'strony'
+
+
+def _mm(value: float) -> str:
+    """Wymiar do nazwy pliku: bez zbędnych zer, przecinek dziesiętny (np. 93, 148,5)."""
+    text = f'{round(float(value), 2):.2f}'.rstrip('0').rstrip('.')
+    return text.replace('.', ',')
+
+
+def default_output_name(source: str, trim_w: float, trim_h: float, suffix: str = IMPOSITION_SUFFIX) -> str:
+    """Podpowiadana nazwa pliku po impozycji: <nazwa oryginału>_<netto szer.>x<netto wys.>mm_<dopisek>.pdf.
+
+    Np. „wizytowki.pdf”, użytek 93 × 53 → „wizytowki_93x53mm_impozycja.pdf”. Znaki niedozwolone w nazwie
+    pliku wynikowego są zamieniane na podkreślenie; pusta nazwa źródła → „montaz”.
+    """
+    stem = _PDF_EXTENSION.sub('', _SEPARATORS.split(source or '')[-1]).strip()
+    stem = ''.join('_' if ch in FORBIDDEN_OUTPUT_CHARS else ch for ch in stem) or 'montaz'
+    return f'{stem}_{_mm(trim_w)}x{_mm(trim_h)}mm_{suffix}.pdf'
