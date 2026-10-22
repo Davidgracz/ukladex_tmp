@@ -65,6 +65,8 @@ class Job:
     page_boxes: dict[str, list[float]] = field(default_factory=dict)
     # Zmiana rozmiaru stron (page_boxes.resize_spec): {"nr strony": {"w", "h", "mode", "keep_orientation", "bleed"}}
     page_sizes: dict[str, dict] = field(default_factory=dict)
+    # Kolejność wierszy tabeli (page_rows.py, H-45): numery stron od 1, None = wakat; None = cały plik po kolei.
+    pages: list[int | None] | None = None
 
     def role_for(self, zero_based_page: int) -> str:
         return self.page_roles.get(str(zero_based_page + 1), self.role)
@@ -462,15 +464,28 @@ def validate_job_roles(jobs: list[Job], documents: dict[str, fitz.Document]):
                 raise ValueError(f'{Path(job.path).name}: strona {number!r} poza zakresem 1–{count}')
             if role not in PAGE_ROLES:
                 raise ValueError(f'{Path(job.path).name}, strona {number}: nieznana rola {role!r}')
+        try:
+            job_rows(job, count)
+        except ValueError as exc:
+            raise ValueError(f'{Path(job.path).name}: {exc}') from None
+
+
+def job_rows(job: Job, count: int) -> list[int | None]:
+    """Wiersze pozycji: strony od 0 w kolejności tabeli, None = wakat (puste pole użytku)."""
+    import page_rows
+    return page_rows.sequence(job.pages, count)
 
 
 def _page_refs(jobs: list[Job], documents: dict[str, fitz.Document]) -> Iterator[SourcePage]:
     """Single-sided and standalone export: only Pomiń changes source order."""
     validate_job_roles(jobs, documents)
     for job in jobs:
+        rows = job_rows(job, len(documents[job.path]))
         for _ in range(job.copies):
-            for i in range(len(documents[job.path])):
-                if job.role_for(i) != ROLE_SKIP:
+            for i in rows:
+                if i is None:
+                    yield None                      # wakat — puste pole użytku
+                elif job.role_for(i) != ROLE_SKIP:
                     yield SourcePage(job.path, i)
 
 
@@ -489,8 +504,8 @@ def _duplex_pairs(jobs: list[Job], documents: dict[str, fitz.Document]):
     validate_job_roles(jobs, documents)
     shared_refs: set[SourcePage] = set()
     for job in jobs:
-        for i in range(len(documents[job.path])):
-            if job.role_for(i) == ROLE_SHARED:
+        for i in job_rows(job, len(documents[job.path])):
+            if i is not None and job.role_for(i) == ROLE_SHARED:
                 shared_refs.add(SourcePage(job.path, i))
     if len(shared_refs) > 1:
         raise ValueError('Może być tylko jedna strona oznaczona „Tył wspólny”.')
@@ -506,7 +521,14 @@ def _duplex_pairs(jobs: list[Job], documents: dict[str, fitz.Document]):
                 for k in range(0, len(legacy), 2):
                     pending.append((legacy[k], legacy[k+1] if k+1 < len(legacy) else None))
                 legacy.clear()
-            for i in range(len(documents[job.path])):
+            for i in job_rows(job, len(documents[job.path])):
+                if i is None:                       # wakat: pusta strona w kolejnej parze przód/tył
+                    if shared is None:
+                        legacy.append(None)
+                    else:
+                        flush_legacy()
+                        pending.append((None, None))
+                    continue
                 source = SourcePage(job.path, i)
                 role = job.role_for(i)
                 if role == ROLE_AUTO and shared is None:
@@ -560,8 +582,8 @@ def _booklet_sides(jobs: list[Job], documents: dict[str, fitz.Document], s: Sett
     validate_job_roles(jobs, documents)
     if job.copies < 1:
         raise ValueError('Nakład musi być >= 1')
-    refs = [SourcePage(job.path, i) for i in range(len(documents[job.path]))
-            if job.role_for(i) != ROLE_SKIP]
+    refs = [None if i is None else SourcePage(job.path, i) for i in job_rows(job, len(documents[job.path]))
+            if i is None or job.role_for(i) != ROLE_SKIP]
     if not refs:
         raise ValueError('Brak stron broszury po wykluczeniu stron z montażu')
     refs += [None]*((-len(refs)) % 4)
@@ -597,7 +619,9 @@ def economic_demands(jobs: list[Job], documents: dict[str, fitz.Document]) -> di
     validate_job_roles(jobs, documents)
     quantities: dict[SourcePage, int] = {}
     for job in jobs:
-        for page in range(len(documents[job.path])):
+        for page in job_rows(job, len(documents[job.path])):
+            if page is None:
+                continue                            # wakat nie ma nakładu (H-45)
             role = job.role_for(page)
             if role not in (ROLE_AUTO, ROLE_SKIP):
                 raise ValueError('Montaż ekonomiczny jest jednostronny. Usuń role przód/tył lub zmień tryb.')
@@ -1834,7 +1858,8 @@ def export_pages(project: Project, output: str, metadata: dict[str, str] | None 
             h = s.trim_h + 2*bleed_for(s)
             page = out.new_page(width=pt(w), height=pt(h))
             slot = Slot(bleed_for(s), bleed_for(s), s.trim_w, s.trim_h, 0, 0, 0)
-            _place_pdf(page, source, slot, s, sources, offsets)
+            if source is not None:          # wakat = pusta strona (numeracja kolejnych stron bez zmian)
+                _place_pdf(page, source, slot, s, sources, offsets)
             if bleed_for(s):
                 page.set_trimbox(fitz.Rect(pt(bleed_for(s)), pt(bleed_for(s)),
                                            pt(bleed_for(s)+s.trim_w), pt(bleed_for(s)+s.trim_h)))
@@ -1920,6 +1945,8 @@ def save_project(project: Project, path: str):
             entry['page_boxes'] = j.page_boxes
         if j.page_sizes:  # pole opcjonalne
             entry['page_sizes'] = j.page_sizes
+        if j.pages is not None:  # pole opcjonalne: kolejność wierszy / wakaty
+            entry['pages'] = list(j.pages)
         jobs.append(entry)
     relative_overrides = {}
     for key, entry in project.overrides.items():
@@ -1936,6 +1963,14 @@ def save_project(project: Project, path: str):
         z.writestr('project.json', json.dumps(payload,ensure_ascii=False,indent=2))
 
 
+def _load_pages(value):
+    if value is None:
+        return None
+    if not isinstance(value, list) or any(v is not None and type(v) is not int for v in value):
+        raise ValueError('Niepoprawna kolejność stron w projekcie')
+    return list(value)
+
+
 def load_project(path: str) -> Project:
     with zipfile.ZipFile(path, 'r') as z:
         data = json.loads(z.read('project.json'))
@@ -1948,7 +1983,8 @@ def load_project(path: str) -> Project:
                 role=j.get('role', ROLE_AUTO), page_roles=dict(j.get('page_roles', {})),
                 crop_x=float(j.get('crop_x', 0)), crop_y=float(j.get('crop_y', 0)),
                 page_boxes={str(k): [float(v) for v in box] for k, box in dict(j.get('page_boxes', {})).items()},
-                page_sizes={str(k): dict(spec) for k, spec in dict(j.get('page_sizes', {})).items()})
+                page_sizes={str(k): dict(spec) for k, spec in dict(j.get('page_sizes', {})).items()},
+                pages=_load_pages(j.get('pages')))
             for j in data.get('jobs', [])]
     overrides = data.get('overrides', {})
     if not isinstance(overrides, dict):
