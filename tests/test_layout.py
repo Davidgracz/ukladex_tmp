@@ -6,6 +6,7 @@ Błąd z 0.5.4: pasek znaczników urósł (11 przycisków w kolumnie), okno wyma
 import tkinter as tk
 
 import pytest
+from conftest import create_tk
 
 app = pytest.importorskip('app')
 
@@ -25,7 +26,7 @@ def _find(widget, text):
 
 @pytest.mark.parametrize('size', ['1366x768', '1280x720'])
 def test_update_button_visible_on_small_screen(size):
-    window = app.App()
+    window = create_tk(app.App)
     try:
         window.geometry(size + '+0+0')
         window.update()
@@ -40,7 +41,7 @@ def test_update_button_visible_on_small_screen(size):
 
 
 def test_window_fits_full_hd_height():
-    window = app.App()
+    window = create_tk(app.App)
     try:
         window.update()
         assert window.winfo_reqheight() <= 1000          # Full HD z paskiem zadań Windows

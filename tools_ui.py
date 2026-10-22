@@ -16,6 +16,7 @@ import barcodes
 import marks
 import pdftools
 from ui_icons import draw_tool
+import codes_ui
 
 PANEL = '#ffffff'
 ACCENT = '#2f6fc2'
@@ -41,6 +42,7 @@ class Tool:
     fields: tuple[tuple[str, str, str, str], ...] = ()
     icon: str = 'extract'  # ikona kafelka (ui_icons.draw_tool)
     category: str = ''     # grupa w menu kafelków
+    custom: str = ''       # własny panel zamiast formularza plików (codes_ui.PANELS)
 
 
 CATEGORIES = ('Dziel i łącz', 'Wybierz i usuń strony', 'Kolejność i obrót', 'Format, spady i cięcie', 'Kody')
@@ -97,9 +99,18 @@ TOOLS = (
          'strony). Strony o rozmiarze pojedynczej strony zostają bez zmian.',
          'file', '--strony', options=('Rozcinaj pierwszą stronę', 'Rozcinaj ostatnią stronę'),
          fields=(('page', 'Rozmiar strony szer. × wys. [mm] (puste = TrimBox pierwszej strony)', '', 'size'),), icon='spreads', category='Format, spady i cięcie'),
+    Tool('Kody QR',
+         'Strona WWW, wizytówka (vCard / MeCard), e-mail, telefon, SMS, Wi-Fi, lokalizacja, wydarzenie, przelew albo '
+         'dowolny tekst. Wpisz treść albo wczytaj plik .txt (jeden kod w wierszu). Kody wektorowe.',
+         'file', icon='qr', category='Kody', custom='qr'),
+    Tool('Kody Data Matrix',
+         'Zwykły: treść wpisana albo z pliku .txt (jeden kod w wierszu). Numery seryjne: wzór z {SER} i zakres numerów '
+         '(jak w generatorze Data Matrix). Kody wektorowe, polskie znaki.',
+         'file', icon='datamatrix', category='Kody', custom='datamatrix'),
     Tool('Kody EAN-13 / EAN-8',
-         'Kody z pliku tekstowego (.txt): jeden kod w wierszu (EAN-13: 12/13 cyfr, EAN-8: 7/8). Każdy kod na osobnej stronie, wektorowo.',
-         'file', '--EAN', options=('EAN-8 zamiast EAN-13',), text_input=True, icon='barcode', category='Kody'),
+         'Kody wpisane albo z pliku .txt: jeden kod w wierszu (EAN-13: 12/13 cyfr, EAN-8: 7/8). '
+         'Każdy kod na osobnej stronie, wektorowo, z cyframi pod kreskami.',
+         'file', icon='barcode', category='Kody', custom='ean'),
 )
 
 
@@ -147,6 +158,8 @@ class PdfToolsFrame(ttk.Frame):
         self.hint = tk.StringVar()
         ttk.Label(heading, textvariable=self.hint, foreground=MUTED, wraplength=560, justify='left').pack(anchor='w')
         files = ttk.Frame(form)
+        self.files_frame = files
+        self.custom_panels: dict[str, ttk.Frame] = {}
         files.grid(row=1, column=0, sticky='ew', pady=8)
         files.columnconfigure(0, weight=1)
         self.listbox = tk.Listbox(files, height=6, bg=PANEL, fg=TEXT, selectbackground='#cfe0f7', selectforeground=TEXT,
@@ -173,7 +186,8 @@ class PdfToolsFrame(ttk.Frame):
         self.form = form
         self.fields_frame = ttk.Frame(form)
         self.field_vars: dict[str, list[tk.StringVar]] = {}
-        ttk.Button(form, text='Start', style='Accent.TButton', command=self.run).grid(row=7, column=0, sticky='w', pady=12)
+        self.start_button = ttk.Button(form, text='Start', style='Accent.TButton', command=self.run)
+        self.start_button.grid(row=7, column=0, sticky='w', pady=12)
         self.log = tk.Text(form, height=9, bg=PANEL, fg=TEXT, relief='solid', borderwidth=1, font=('Consolas', 10), wrap='word')
         self.log.grid(row=8, column=0, sticky='nsew')
         form.rowconfigure(8, weight=1)
@@ -223,6 +237,18 @@ class PdfToolsFrame(ttk.Frame):
         self.fields_frame.grid_forget()
         for child in self.fields_frame.winfo_children():
             child.destroy()
+        for key, panel in self.custom_panels.items():
+            if key != tool.custom:
+                panel.grid_remove()
+        if tool.custom:                     # generatory kodów: własny panel zamiast listy plików i pól
+            self.files_frame.grid_remove()
+            self.start_button.grid_remove()
+            if tool.custom not in self.custom_panels:
+                self.custom_panels[tool.custom] = codes_ui.PANELS[tool.custom](self.form, self._log)
+            self.custom_panels[tool.custom].grid(row=1, column=0, rowspan=6, sticky='nsew', pady=8)
+            return
+        self.files_frame.grid()
+        self.start_button.grid()
         self.field_vars = {}
         if tool.fields:
             for col, text in enumerate(('Lewy', 'Prawy', 'Górny', 'Dolny'), start=1):
@@ -384,12 +410,7 @@ class PdfToolsFrame(ttk.Frame):
                                                box='MediaBox' if opt[1] else 'TrimBox', page_size=page,
                                                pages_text=pages)
             else:
-                kind = 'EAN8' if opt[0] else 'EAN13'
-                codes, bad = barcodes.read_codes(Path(first).read_text(encoding='utf-8-sig'), kind)
-                barcodes.export_pdf(codes, target)
-                written = [target]
-                for line, message in bad:
-                    self._log(f'Pominięto wiersz {line}: {message}')
+                raise ValueError(f'Nieobsługiwane narzędzie: {name}')
         except (ValueError, FileNotFoundError, RuntimeError, OSError) as exc:
             messagebox.showerror(tool.name, str(exc))
             return

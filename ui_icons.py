@@ -195,6 +195,21 @@ def draw_tool(name, size=32):
         _page(d, (2*u, 7*u, 14*u, 23*u), fold=False)
         _page(d, (16*u, 7*u, 28*u, 23*u), fold=False)
         d.line([(15*u, 3*u), (15*u, 27*u)], fill=RED, width=w)
+    elif name in ('qr', 'datamatrix'):
+        if name == 'qr':     # trzy znaczniki pozycji i kilka modułów
+            for x0, y0 in ((3, 3), (19, 3), (3, 19)):
+                d.rectangle((x0*u, y0*u, (x0 + 8)*u, (y0 + 8)*u), outline=DARK, width=int(1.6*u))
+                d.rectangle(((x0 + 2.6)*u, (y0 + 2.6)*u, (x0 + 5.4)*u, (y0 + 5.4)*u), fill=DARK)
+            for x, y in ((14, 4), (14, 9), (19, 14), (24, 19), (14, 19), (19, 24), (24, 24), (9, 14), (4, 14)):
+                d.rectangle((x*u, y*u, (x + 3)*u, (y + 3)*u), fill=INK)
+        else:                # obramowanie L i wzór zegarowy Data Matrix
+            d.rectangle((3*u, 3*u, 5*u, 27*u), fill=DARK)
+            d.rectangle((3*u, 25*u, 27*u, 27*u), fill=DARK)
+            for k in range(6):
+                d.rectangle(((5 + k*4)*u, 3*u, (7 + k*4)*u, 5*u), fill=DARK)
+                d.rectangle((25*u, (5 + k*4)*u, 27*u, (7 + k*4)*u), fill=DARK)
+            for x, y in ((8, 8), (14, 8), (11, 12), (17, 14), (8, 17), (14, 19), (20, 20), (20, 9)):
+                d.rectangle((x*u, y*u, (x + 3)*u, (y + 3)*u), fill=INK)
     elif name == 'barcode':
         x = 4.0
         for k, bar in enumerate((2, 1, 1, 3, 1, 2, 1, 1, 2, 1, 3, 1)):

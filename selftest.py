@@ -42,6 +42,11 @@ def _checks(folder: Path) -> list[str]:
     pdftools.add_bleed(str(src), str(folder / 'spady.pdf'), (3, 3, 3, 3), (1, 1, 1, 1), (10, 10, 10, 10))
     barcodes.export_pdf(['4006381333931'], str(folder / 'ean.pdf'))
     done.append('programy dodatkowe')
+    import codes
+    qr = codes.matrix(codes.QR, 'https://example.com', 'M')
+    dm = codes.matrix(codes.DATAMATRIX, codes.serial_values('S{SER}', 'A', 1, 1)[0])
+    codes.render_pdf([('qr', qr), ('dm', dm)], str(folder / 'kody.pdf'))
+    done.append(f'kody QR {len(qr)}×{len(qr)} i Data Matrix {len(dm)}×{len(dm)}')
 
     import app
     window = app.App()
