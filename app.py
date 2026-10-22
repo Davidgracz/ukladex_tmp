@@ -24,7 +24,7 @@ from economic_csv import write_economic_csv
 from crop_editor import CropEditor
 from ui_icons import draw as draw_icon
 from engine import RUN_MODES, RUN_ALL, gutter_notes, slug_notes, strip_notes, FILL_GROSS
-from engine import CROP_NET, CROP_GROSS, CROP_BLEED, crop_output_name, crop_to_file, job_rows
+from engine import CROP_NET, CROP_GROSS, CROP_BLEED, crop_output_name, crop_to_file, job_rows, export_files
 import page_rows
 
 # Parametry znaczników (okna „definicji” w Imp4) trzymane poza polami wstęgi.
@@ -134,7 +134,7 @@ MARK_DIALOGS = {
         ('trim_crop_pt', 'Szerokość docięcia [pt] (z lewej na parzystych, z prawej na nieparzystych)'),)),
 }
 from naming import (add_imposition_phrase, output_name_problem, default_output_name, IMPOSITION_SUFFIX,
-                    PAGES_SUFFIX)
+                    PAGES_SUFFIX, OUTPUT_MODES)
 import marks
 import table_actions
 from tools_ui import PdfToolsFrame
@@ -360,6 +360,7 @@ class App(tk.Tk):
         self.taxi_ui.pack(fill='both', expand=True)
         # Ustawienia pliku wynikowego (w Imp4: okno Ustawienia) — lokalne, nie trafiają do .psimp.
         self.phrase_var = tk.BooleanVar(value=False)
+        self.output_files_var = tk.StringVar(value=OUTPUT_MODES[0])
         self.meta_vars = {key: tk.StringVar() for key in ('author', 'title', 'subject', 'keywords')}
         self.run_mode_var = tk.StringVar(value=RUN_ALL)
 
@@ -1000,6 +1001,7 @@ class App(tk.Tk):
         self.slug_var.set(s.slug_on)
         self.strip_var.set(s.strip_on)
         self.own_var.set(s.own_marks)
+        self.output_files_var.set(s.output_files)
         self.reg2_var.set(s.reg2_on)
         self.white_trim_var.set(s.white_trim)
         self.auto_orient_var.set(s.auto_orient)
@@ -1074,6 +1076,7 @@ class App(tk.Tk):
                         gross_marks=self.gross_var.get(), reg_marks=self.reg_var.get(), slug_on=self.slug_var.get(),
                         strip_on=self.strip_var.get(),
                         own_marks=self.own_var.get(),
+                        output_files=self.output_files_var.get(),
                         reg2_on=self.reg2_var.get(),
                         white_trim=self.white_trim_var.get(), auto_orient=self.auto_orient_var.get(),
                         **self.mark_params)
@@ -1895,10 +1898,16 @@ class App(tk.Tk):
                                             ('subject', 'Temat'), ('keywords', 'Słowa kluczowe')), start=1):
             ttk.Label(body, text=f'{label} (puste = nazwa pliku):').grid(row=row, column=0, sticky='w', pady=2)
             ttk.Entry(body, textvariable=self.meta_vars[key], width=36).grid(row=row, column=1, sticky='ew', pady=2)
+        ttk.Label(body, text='Łączenie plików wynikowych:').grid(row=5, column=0, sticky='w', pady=(10, 2))
+        ttk.Combobox(body, textvariable=self.output_files_var, values=OUTPUT_MODES, state='readonly',
+                     width=40).grid(row=5, column=1, sticky='ew', pady=(10, 2))
+        ttk.Label(body, text='Arkusze: <nazwa>--arkusz-01.pdf (przód i tył razem); każda strona osobno: '
+                             '<nazwa>--01.pdf — w folderze pliku wynikowego.', style='Muted.TLabel',
+                  wraplength=440).grid(row=6, column=0, columnspan=2, sticky='w')
         ttk.Label(body, text='Nazwa pliku nie może zawierać znaków # % & * : < > ? / \\ { } | '
                              'ani być nazwą pliku przetwarzanego.', style='Muted.TLabel',
-                  wraplength=440).grid(row=5, column=0, columnspan=2, sticky='w', pady=(10, 0))
-        ttk.Button(body, text='Zamknij', command=dlg.destroy).grid(row=6, column=1, sticky='e', pady=(12, 0))
+                  wraplength=440).grid(row=7, column=0, columnspan=2, sticky='w', pady=(10, 0))
+        ttk.Button(body, text='Zamknij', command=dlg.destroy).grid(row=8, column=1, sticky='e', pady=(12, 0))
 
     def _table_menu(self, event):
         row = self.files.identify_row(event.y)
@@ -2371,8 +2380,15 @@ class App(tk.Tk):
                 return
             self.update_idletasks()
             self.stats_text.set('Eksport w toku…')
-            count=(export_pages(self.project,path,metadata) if standalone
-                   else export_pdf(self.project,path,metadata,run_mode,active))
+            files=[path]
+            if standalone:
+                count=export_pages(self.project,path,metadata)
+            else:
+                files=export_files(self.project,path,metadata,run_mode,active)
+                count=None
+                if len(files) == 1:
+                    with fitz.open(files[0]) as written:
+                        count=len(written)
             extra_note = '' if run_mode == RUN_ALL else f'\n\nTryb: {run_mode} (aktywny arkusz {active}).'
             if not standalone and run_mode == RUN_ALL and self.project.settings.mode == 'Ekonomiczny':
                 docs = open_sources(self.project.jobs)
@@ -2384,8 +2400,16 @@ class App(tk.Tk):
                 csv_dest = str(Path(path).with_name(Path(path).stem + '_plan_ekonomiczny.csv'))
                 write_economic_csv(audit,csv_dest)
                 extra_note = f'\n\nPlan nakładów CSV: {csv_dest}\nNadprodukcja: {audit.overproduction} szt.'
-            self.stats_text.set(f'Wyeksportowano {count} stron PDF: {path}')
-            messagebox.showinfo('Eksport zakończony',f'Zapisano {count} stron PDF.\n{path}' + extra_note + '\n\nSprawdź podgląd i wydruk próbny przed nakładem.')
+            if count is not None:
+                self.stats_text.set(f'Wyeksportowano {count} stron PDF: {path}')
+                summary=f'Zapisano {count} stron PDF.\n{path}'
+            else:
+                n=len(files)
+                files_word='pliki' if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14) else 'plików'
+                self.stats_text.set(f'Wyeksportowano {n} {files_word} PDF: {Path(path).parent}')
+                listing='\n'.join(Path(f).name for f in files[:15]) + (f'\n… (+{len(files) - 15})' if len(files) > 15 else '')
+                summary=f'Zapisano {n} {files_word} PDF ({self.project.settings.output_files}) w folderze\n{Path(path).parent}:\n{listing}'
+            messagebox.showinfo('Eksport zakończony', summary + extra_note + '\n\nSprawdź podgląd i wydruk próbny przed nakładem.')
         except Exception as e:
             messagebox.showerror('Błąd eksportu',str(e))
             self.refresh()

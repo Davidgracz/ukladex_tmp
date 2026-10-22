@@ -59,3 +59,42 @@ def default_output_name(source: str, trim_w: float, trim_h: float, suffix: str =
     stem = _PDF_EXTENSION.sub('', _SEPARATORS.split(source or '')[-1]).strip()
     stem = ''.join('_' if ch in FORBIDDEN_OUTPUT_CHARS else ch for ch in stem) or 'montaz'
     return f'{stem}_{_mm(trim_w)}x{_mm(trim_h)}mm_{suffix}.pdf'
+
+
+# --- Łączenie plików wynikowych (okno „Łączenie plików wynikowych” Imp4, E1; H-48) ----------------------------
+
+OUTPUT_ONE = 'Jeden plik'
+OUTPUT_MODES = (
+    OUTPUT_ONE,
+    'Jeden plik + arkusze',
+    'Jeden plik + arkusze + każda strona osobno',
+    'Jeden plik + każda strona osobno',
+    'Arkusze',
+    'Arkusze + każda strona osobno',
+    'Każda strona osobno (bez łączenia)',
+)
+
+
+def output_parts(mode: str) -> tuple[bool, bool, bool]:
+    """(jeden plik, plik na każdy arkusz, plik na każdą stronę) dla wariantu łączenia."""
+    if mode not in OUTPUT_MODES:
+        raise ValueError(f'Pliki wynikowe: {", ".join(OUTPUT_MODES)}')
+    if mode == OUTPUT_MODES[-1]:
+        return False, False, True
+    return mode.startswith('Jeden plik'), 'arkusze' in mode.lower(), 'osobno' in mode
+
+
+def _numbered(name: str, word: str, number: int, count: int) -> str:
+    stem = _PDF_EXTENSION.sub('', name)
+    width = max(2, len(str(count)))
+    return f'{stem}--{word}{number:0{width}d}.pdf'
+
+
+def sheet_file_name(output_name: str, number: int, count: int) -> str:
+    """Plik arkusza: <nazwa>--arkusz-01.pdf (H-48)."""
+    return _numbered(output_name, 'arkusz-', number, count)
+
+
+def page_file_name(output_name: str, number: int, count: int) -> str:
+    """Plik pojedynczej strony pliku wynikowego: <nazwa>--01.pdf (jak przy dzieleniu stron, P-06; H-48)."""
+    return _numbered(output_name, '', number, count)

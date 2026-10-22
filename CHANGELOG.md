@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Output file splitting from the original's „Łączenie plików wynikowych” (seven variants: one file, sheets,
+  each page separately and their combinations) in „Ustawienia — plik wynikowy”, stored in the project (old
+  projects: one file). Sheet files `<name>--arkusz-NN.pdf` hold front and back; page files `<name>--NN.pdf`.
+  The imposition is rendered once; no temporary file is left behind. H-48.
+
 ## 0.5.3
 
 Nowości w ImpoCraft 0.5.3:
