@@ -27,7 +27,7 @@ if errorlevel 1 goto ERROR
 ".venv\Scripts\python.exe" scripts\make_version_info.py build\version_info.txt
 if errorlevel 1 goto ERROR
 
-set "COMMON=--noconfirm --clean --windowed --name ImpoCraft --icon build\impozycjoner.ico --version-file build\version_info.txt --hidden-import app_info --hidden-import updater --hidden-import update_ui --collect-all pymupdf --hidden-import sheet_editor --hidden-import whitecrop --hidden-import tools_ui --hidden-import table_actions --hidden-import user_data --hidden-import page_boxes --hidden-import page_box_ui --add-data assets;assets"
+set "COMMON=--noconfirm --clean --windowed --name ImpoCraft --icon build\impozycjoner.ico --version-file build\version_info.txt --hidden-import app_info --hidden-import updater --hidden-import update_ui --collect-all pymupdf --collect-all zxingcpp --hidden-import codes --hidden-import codes_ui --hidden-import sheet_editor --hidden-import whitecrop --hidden-import tools_ui --hidden-import table_actions --hidden-import user_data --hidden-import page_boxes --hidden-import page_box_ui --add-data assets;assets"
 
 echo [ImpoCraft] Budowanie folderu programu ...
 ".venv\Scripts\python.exe" -m PyInstaller %COMMON% --onedir app.py

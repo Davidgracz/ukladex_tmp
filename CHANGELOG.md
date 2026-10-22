@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Code generators in „Programy dodatkowe → Kody”: QR with content types (website, vCard and MeCard business
+  cards, e-mail, phone, SMS, Wi-Fi, location, calendar event, Polish bank transfer, free text), Data Matrix (typed
+  text or .txt, and serial numbers ported from the user's old datamt.py generator: {SER} template, prefix,
+  from–to, step, zero padding, {GS}/{RS}/{EOT}) and EAN-13/EAN-8 with typed input. Text can be typed or loaded
+  from .txt. Vector output (CMYK), size, quiet zone, QR error correction L/M/Q/H, transparent background,
+  caption, one PDF or a file per code, preview. New dependency: zxing-cpp (Apache-2.0), bundled in the EXE.
+  H-52.
+- Tests: Tk windows in tests are created with a retry on the transient „Can't find a usable tk.tcl” error seen
+  during builds (the file exists; most likely a short antivirus lock), panel tests share one Tk root.
+
 ## 0.5.6
 
 Nowości w ImpoCraft 0.5.6:

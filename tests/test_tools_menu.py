@@ -53,9 +53,9 @@ def test_every_tool_has_tile_icon_and_category():
         assert len(tool.name) <= 30, tool.name                     # mieści się na kafelku
 
 
-def test_tiles_select_tool_and_run_delete(tmp_path, monkeypatch):
+def test_tiles_select_tool_and_run_delete(tmp_path, monkeypatch, tk_root):
     src = make_pdf(tmp_path)
-    root = tk.Tk()
+    root = tk_root
     try:
         frame = tools_ui.PdfToolsFrame(root)
         frame.pack()
@@ -80,4 +80,4 @@ def test_tiles_select_tool_and_run_delete(tmp_path, monkeypatch):
         frame.run()
         assert texts(target) == ['strona2', 'strona3', 'strona4', 'strona5']
     finally:
-        root.destroy()
+        frame.destroy()
