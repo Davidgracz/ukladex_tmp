@@ -133,7 +133,8 @@ MARK_DIALOGS = {
     'trimcrop': ('Dodatkowe docięcie TrimBox', (
         ('trim_crop_pt', 'Szerokość docięcia [pt] (z lewej na parzystych, z prawej na nieparzystych)'),)),
 }
-from naming import add_imposition_phrase, output_name_problem
+from naming import (add_imposition_phrase, output_name_problem, default_output_name, IMPOSITION_SUFFIX,
+                    PAGES_SUFFIX)
 import marks
 import table_actions
 from tools_ui import PdfToolsFrame
@@ -2335,9 +2336,15 @@ class App(tk.Tk):
         if not self.project.jobs:
             messagebox.showwarning('Brak plików','Najpierw dodaj PDF.')
             return
-        path=filedialog.asksaveasfilename(defaultextension='.pdf',
-              initialfile='strony_docelowe.pdf' if standalone else 'montaz.pdf',
-              filetypes=[('PDF do druku','*.pdf')])
+        source=self.project.jobs[0].path
+        try:
+            trim=self._read_fields()
+            suggested=default_output_name(source, trim.trim_w, trim.trim_h,
+                                          PAGES_SUFFIX if standalone else IMPOSITION_SUFFIX)
+        except (ValueError, TypeError):
+            suggested='strony_docelowe.pdf' if standalone else 'montaz.pdf'
+        path=filedialog.asksaveasfilename(defaultextension='.pdf', initialdir=str(Path(source).parent),
+              initialfile=suggested, filetypes=[('PDF do druku','*.pdf')])
         if not path:return
         if self.phrase_var.get():
             path=str(Path(path).with_name(add_imposition_phrase(Path(path).name)))
