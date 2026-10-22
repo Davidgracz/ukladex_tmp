@@ -70,6 +70,11 @@ def draw(name, size=30):
         d.ellipse((10*u, 8*u, 27*u, 25*u), outline=INK, width=SCALE*2)
         d.line([(15*u, 2*u), (15*u, 28*u)], fill=DARK, width=SCALE)
         d.line([(2*u, 15*u), (28*u, 15*u)], fill=DARK, width=SCALE)
+    elif name == 'reg2':  # użytek ze spadem i krzyże pasowania przy narożnikach
+        d.rectangle((9*u, 9*u, 21*u, 21*u), fill=BACK, outline=DARK, width=SCALE)
+        for x, y, dx, dy in ((9, 9, -1, -1), (21, 9, 1, -1), (9, 21, -1, 1), (21, 21, 1, 1)):
+            d.line([(x*u, y*u), ((x + 7*dx)*u, y*u)], fill=INK, width=SCALE*2)
+            d.line([((x + 4*dx)*u, (y + 5*dy)*u), ((x + 4*dx)*u, (y - 4*dy)*u)], fill=INK, width=SCALE*2)
     elif name == 'refresh':
         d.arc((5*u, 5*u, 25*u, 25*u), 40, 330, fill=INK, width=int(3*u))
         d.polygon([(25*u, 3*u), (26*u, 13*u), (17*u, 10*u)], fill=INK)

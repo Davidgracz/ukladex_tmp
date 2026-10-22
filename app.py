@@ -40,11 +40,13 @@ MARK_PARAMS = ('mark_offset', 'mark_length', 'mark_width_pt',
                'slug_size', 'slug_font', 'slug_top', 'slug_side', 'slug_sheet_word', 'slug_page_word', 'slug_roman',
                'strip_top', 'strip_bottom', 'strip_gutter', 'strip_cell_w', 'strip_cell_h', 'strip_zones',
                'strip_offset', 'strip_centered', 'strip_trim', 'strip_colors', 'strip_pdf',
-               'own_folder', 'own_1l', 'own_1r', 'own_2l', 'own_2r', 'own_h1', 'own_v1', 'own_h2', 'own_v2')
+               'own_folder', 'own_1l', 'own_1r', 'own_2l', 'own_2r', 'own_h1', 'own_v1', 'own_h2', 'own_v2',
+               'reg2_v1', 'reg2_v2', 'reg2_h1', 'reg2_h2', 'reg2_pt', 'reg2_color')
 MARK_CHOICES = {'gross_mark_pages': ('Wszystkie', 'Nieparzyste', 'Parzyste'), 'reg_variant': (1, 2),
                 'slug_size': (10, 12, 14), 'slug_font': ('Arial', 'Courier'),
                 'mark_pages': ('Wszystkie', 'Nieparzyste', 'Parzyste'),
-                'mark_color': ('Czarny (dotychczasowy)', 'K 100 %', 'Rejestracyjny (100 % CMYK)')}
+                'mark_color': ('Czarny (dotychczasowy)', 'K 100 %', 'Rejestracyjny (100 % CMYK)'),
+                'reg2_color': ('Czarny (dotychczasowy)', 'K 100 %', 'Rejestracyjny (100 % CMYK)')}
 MARK_DIALOGS = {
     'strip': ('Pasek kontroli koloru', (
         ('strip_top', 'Rysuj pasek na górze arkusza'),
@@ -110,6 +112,13 @@ MARK_DIALOGS = {
         ('gutter_marks', 'Rysuj znacznik w osi wycinki'),
         ('gutter_mark_length', 'Długość znacznika [mm] (0 = przez całe pole zadruku)'),
         ('gutter_mark_pt', 'Grubość znacznika [pt]'))),
+    'reg2': ('Pasery w polu brutto', (
+        ('reg2_v1', 'V1 — długość kreski pionowej nad użytkami [mm]'),
+        ('reg2_v2', 'V2 — dalsza część kreski pionowej, wzdłuż użytku [mm]'),
+        ('reg2_h1', 'H1 — odległość kreski pionowej od krawędzi brutto [mm]'),
+        ('reg2_h2', 'H2 — kreska pozioma = H1 + H2 [mm]'),
+        ('reg2_pt', 'Grubość [pt]'),
+        ('reg2_color', 'Kolor'))),
     'own': ('Znaczniki własne z plików PDF', (
         ('own_folder', 'Folder z plikami U1L/U1R/U2L/U2R.pdf (puste = domyślny)'),
         ('own_h1', 'Strona nieparzysta — H [mm] od lewej/prawej krawędzi'),
@@ -329,6 +338,7 @@ class App(tk.Tk):
         self.slug_var = tk.BooleanVar(value=False)
         self.strip_var = tk.BooleanVar(value=False)
         self.own_var = tk.BooleanVar(value=False)
+        self.reg2_var = tk.BooleanVar(value=False)
         defaults = Settings()
         self.mark_params = {key: getattr(defaults, key) for key in MARK_PARAMS}
         self.status_text = tk.StringVar(value='')
@@ -411,7 +421,7 @@ class App(tk.Tk):
         # Skróty jak w Impozycjonerze 4: Ctrl+N nowa impozycja, Ctrl+W wczytaj projekt, Shift+Ctrl+S zapisz jako.
         for key, var in (('n', self.marks_var), ('w', self.gutter_var), ('t', self.trimcrop_var),
                          ('b', self.gross_var), ('p', self.reg_var), ('o', self.slug_var),
-                         ('k', self.strip_var), ('u', self.own_var)):
+                         ('k', self.strip_var), ('u', self.own_var), ('s', self.reg2_var)):
             self.bind(f'<KeyPress-{key}>', lambda e, v=var: self._mark_shortcut(e, v))
             self.bind(f'<KeyPress-{key.upper()}>', lambda e, v=var: self._mark_shortcut(e, v))
         self.bind('<Control-n>', lambda e: self.new_project())
@@ -688,6 +698,7 @@ class App(tk.Tk):
                                       ('trimcrop', 'Docięcie\nTrimBox (T)', self.trimcrop_var, 'trimcrop'),
                                       ('gross', 'Brutto\n(B)', self.gross_var, 'gross'),
                                       ('register', 'Pasery\n(P)', self.reg_var, 'register'),
+                                      ('reg2', 'Pasery\nbrutto (S)', self.reg2_var, 'reg2'),
                                       ('slug', 'Opis\narkusza (O)', self.slug_var, 'slug'),
                                       ('strip', 'Pasek\nkontrolny (K)', self.strip_var, 'strip'),
                                       ('own', 'Znaczniki\nwłasne (U)', self.own_var, 'own'),
@@ -983,6 +994,7 @@ class App(tk.Tk):
         self.slug_var.set(s.slug_on)
         self.strip_var.set(s.strip_on)
         self.own_var.set(s.own_marks)
+        self.reg2_var.set(s.reg2_on)
         self.white_trim_var.set(s.white_trim)
         self.auto_orient_var.set(s.auto_orient)
         self.mark_params = {key: getattr(s, key) for key in MARK_PARAMS}
@@ -1056,6 +1068,7 @@ class App(tk.Tk):
                         gross_marks=self.gross_var.get(), reg_marks=self.reg_var.get(), slug_on=self.slug_var.get(),
                         strip_on=self.strip_var.get(),
                         own_marks=self.own_var.get(),
+                        reg2_on=self.reg2_var.get(),
                         white_trim=self.white_trim_var.get(), auto_orient=self.auto_orient_var.get(),
                         **self.mark_params)
 
@@ -1658,7 +1671,7 @@ class App(tk.Tk):
 
     def marks_all_off(self):
         for var in (self.marks_var, self.gutter_var, self.trimcrop_var, self.gross_var, self.reg_var,
-                    self.slug_var, self.strip_var, self.own_var, self.labels_var):
+                    self.slug_var, self.strip_var, self.own_var, self.reg2_var, self.labels_var):
             var.set(False)
         self.schedule_refresh()
 
@@ -1739,6 +1752,11 @@ class App(tk.Tk):
         if kind == 'gutter':
             ttk.Label(body, text='Wycinka jest uwzględniana tylko wtedy, gdy to możliwe: pionowa przy parzystej '
                                  'liczbie kolumn, pozioma przy parzystej liczbie wierszy. Inaczej preflight pokaże uwagę.',
+                      style='Muted.TLabel', wraplength=430).grid(row=len(rows) + 1, column=0, columnspan=2,
+                                                                 sticky='w', pady=(8, 0))
+        if kind == 'reg2':
+            ttk.Label(body, text='Krzyże pasowania przy czterech narożnikach siatki brutto użytków: kreska pozioma na '
+                                 'przedłużeniu krawędzi brutto, pionowa w odległości H1 od niej.',
                       style='Muted.TLabel', wraplength=430).grid(row=len(rows) + 1, column=0, columnspan=2,
                                                                  sticky='w', pady=(8, 0))
         if kind == 'own':

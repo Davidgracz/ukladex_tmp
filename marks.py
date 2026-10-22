@@ -377,3 +377,24 @@ def own_mark_rect(side: str, size: tuple[float, float], h: float, v: float,
     if side == 'R':
         return (sheet_w - h - w, top, sheet_w - h, top + hgt)
     raise ValueError('Strona znacznika: L albo R')
+
+
+# --- Pasery w polu brutto (S; okno „Parametry paserów w polu brutto”, E1; H-44) --------------------------------
+
+def gross_register_segments(grid: tuple[float, float, float, float], v1: float, v2: float, h1: float,
+                            h2: float) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+    """Krzyże pasowania przy czterech narożnikach siatki brutto użytków (mm, y w dół).
+
+    E1: V1 — długość kreski pionowej nad pierwszym użytkiem, V1 + V2 — cała jej długość; H1 — odległość kreski
+    pionowej od krawędzi brutto użytka, H1 + H2 — długość kreski poziomej. H-44: kreska pozioma leży na przedłużeniu
+    górnej (dolnej) krawędzi brutto i biegnie od krawędzi użytka na zewnątrz; przy dolnych narożnikach V1 jest pod
+    użytkami — znaczniki są lustrzanym odbiciem górnych, prawe — lewych.
+    """
+    x0, y0, x1, y1 = grid
+    segments = []
+    for edge_x, out_x in ((x0, -1), (x1, 1)):
+        for edge_y, out_y in ((y0, -1), (y1, 1)):
+            vx = edge_x + out_x * h1
+            segments.append(((vx, edge_y + out_y * v1), (vx, edge_y - out_y * v2)))
+            segments.append(((edge_x, edge_y), (edge_x + out_x * (h1 + h2), edge_y)))
+    return segments
