@@ -24,7 +24,8 @@ from economic_csv import write_economic_csv
 from crop_editor import CropEditor
 from ui_icons import draw as draw_icon
 from engine import RUN_MODES, RUN_ALL, gutter_notes, slug_notes, strip_notes, FILL_GROSS
-from engine import CROP_NET, CROP_GROSS, CROP_BLEED, crop_output_name, crop_to_file
+from engine import CROP_NET, CROP_GROSS, CROP_BLEED, crop_output_name, crop_to_file, job_rows
+import page_rows
 
 # Parametry znaczników (okna „definicji” w Imp4) trzymane poza polami wstęgi.
 MARK_PARAMS = ('mark_offset', 'mark_length', 'mark_width_pt',
@@ -633,6 +634,10 @@ class App(tk.Tk):
         self.files.bind('<Double-1>', lambda event: self.edit_page_roles())
         self.files.bind('<Delete>', lambda event: self.remove_file())
         self.files.bind('<Button-3>', self._table_menu)
+        # Schowek wierszy tabeli (jak Kopiuj / Wytnij / Wklej w Imp4); wklejanie — po zaznaczonym wierszu.
+        self.files.bind('<Control-c>', lambda event: (self.copy_rows(), 'break')[1])
+        self.files.bind('<Control-x>', lambda event: (self.cut_rows(), 'break')[1])
+        self.files.bind('<Control-v>', lambda event: (self.paste_rows(page_rows.WHERE_AFTER), 'break')[1])
 
         actions = ttk.Frame(panel, style='Panel.TFrame')
         actions.grid(row=2, column=0, sticky='ew', pady=(5, 0))
@@ -1174,7 +1179,18 @@ class App(tk.Tk):
                 self.files.insert('', 'end', iid=f'{i}:0', values=('!', '—', name+' [BRAK]', '', '', j.copies, ''),
                                   tags=(f'job{i}',))
                 continue
-            for page,(w,h) in enumerate(sizes):
+            try:
+                rows = job_rows(j, len(sizes))
+            except ValueError:
+                rows = list(range(len(sizes)))
+            for row, page in enumerate(rows):
+                if page is None:  # wakat: puste pole użytku w tej pozycji montażu
+                    total += 1
+                    self.files.insert('', 'end', iid=table_actions.row_id(i, None, row),
+                                      values=(total, '—', f'{name} — WAKAT', '', '', j.copies, 'Wakat'),
+                                      tags=(f'job{i}', 'vacancy'))
+                    continue
+                w, h = sizes[page]
                 role = j.role_for(page)
                 if role != ROLE_SKIP:
                     total += 1
@@ -1188,15 +1204,18 @@ class App(tk.Tk):
                     import page_boxes
                     w, h, _ = page_boxes.resize_plan(w, h, resized)
                     mark = '*'
-                self.files.insert('', 'end', iid=f'{i}:{page}',
+                self.files.insert('', 'end', iid=table_actions.row_id(i, page, row),
                                   values=(total if role != ROLE_SKIP else '–', page+1, name,
                                           f'{w:.1f}'.rstrip('0').rstrip('.') + mark,
                                           f'{h:.1f}'.rstrip('0').rstrip('.') + mark,
                                           j.copies, role), tags=tags)
         self.pages_title.set(f'Stron: {total} • Plików: {len(self.project.jobs)}')
-        if selected is not None and f'{selected}:0' in self.files.get_children():
-            self.files.selection_set(f'{selected}:0')
-            self.files.see(f'{selected}:0')
+        self.files.tag_configure('vacancy', foreground='#8a94a3')
+        if selected is not None:
+            first = next((iid for iid in self.files.get_children() if iid.split(':')[0] == str(selected)), None)
+            if first:
+                self.files.selection_set(first)
+                self.files.see(first)
 
     def _tree_selection(self,*args):
         idx=self._selected_job()
@@ -1899,6 +1918,29 @@ class App(tk.Tk):
         menu.add_command(label=f'Kadruj plik do obszaru brutto (netto + {CROP_BLEED:g} mm spadu) i zapisz…',
                          command=lambda: self.crop_and_save(CROP_GROSS))
         menu.add_separator()
+        rows_menu = tk.Menu(menu, tearoff=0)
+        rows_menu.add_command(label='Wstaw wakat PRZED…', command=lambda: self.insert_vacancy(page_rows.WHERE_BEFORE))
+        rows_menu.add_command(label='Wstaw wakat PO…', command=lambda: self.insert_vacancy(page_rows.WHERE_AFTER))
+        rows_menu.add_command(label='Wstaw wakat TUTAJ (wyczyść wiersz)',
+                              command=lambda: self.insert_vacancy(page_rows.WHERE_HERE))
+        rows_menu.add_command(label='Usuń wszystkie dodane wakaty', command=self.remove_vacancies)
+        rows_menu.add_separator()
+        rows_menu.add_command(label='Wstaw plik PRZED…', command=lambda: self.insert_file(page_rows.WHERE_BEFORE))
+        rows_menu.add_command(label='Wstaw plik PO…', command=lambda: self.insert_file(page_rows.WHERE_AFTER))
+        rows_menu.add_command(label='Zamień na stronę innego pliku…', command=self.replace_with_file_page)
+        rows_menu.add_command(label='Zamień na inną stronę z pliku…', command=self.replace_with_same_file_page)
+        rows_menu.add_separator()
+        rows_menu.add_command(label='Kopiuj', accelerator='Ctrl+C', command=self.copy_rows)
+        rows_menu.add_command(label='Wytnij', accelerator='Ctrl+X', command=self.cut_rows)
+        rows_menu.add_command(label='Wklej PRZED', command=lambda: self.paste_rows(page_rows.WHERE_BEFORE))
+        rows_menu.add_command(label='Wklej PO', accelerator='Ctrl+V', command=lambda: self.paste_rows(page_rows.WHERE_AFTER))
+        menu.add_cascade(label='Wiersze: wakaty, wstaw, zamień, kopiuj…', menu=rows_menu)
+        select_menu = tk.Menu(menu, tearoff=0)
+        select_menu.add_command(label='Zaznacz wiersze UJĘTE w impozycji', command=lambda: self.select_rows_by('in'))
+        select_menu.add_command(label='Zaznacz wiersze NIEUJĘTE w impozycji', command=lambda: self.select_rows_by('out'))
+        select_menu.add_command(label='Zaznacz takie same', command=lambda: self.select_rows_by('same'))
+        menu.add_cascade(label='Zaznacz ujęte / nieujęte / takie same', menu=select_menu)
+        menu.add_separator()
         menu.add_command(label='Pomiń zaznaczone strony w impozycji', command=lambda: self._skip_selected(True))
         menu.add_command(label='Przywróć zaznaczone strony do impozycji', command=lambda: self._skip_selected(False))
         menu.add_command(label='Usuń wszystkie wiersze z pliku', command=self.remove_file)
@@ -1920,6 +1962,9 @@ class App(tk.Tk):
         if not selection:
             return
         job, page = table_actions.parse_row(selection[0])
+        if page is None:
+            messagebox.showinfo('Znajdź arkusz', 'Zaznaczony wiersz to wakat.', parent=self)
+            return
         index = table_actions.first_side_with(self.current_sides, self.project.jobs[job].path, page)
         if index is None:
             messagebox.showinfo('Znajdź arkusz', 'Ta strona nie występuje na żadnym arkuszu.', parent=self)
@@ -1928,7 +1973,7 @@ class App(tk.Tk):
 
     def resize_pages(self):
         """Skaluj zaznaczone strony do podanego rozmiaru TrimBox (jak zmiana Szer./Wys. wierszy w Impozycjonerze)."""
-        rows = [table_actions.parse_row(iid) for iid in self.files.selection()]
+        rows = [r for r in (table_actions.parse_row(iid) for iid in self.files.selection()) if r[1] is not None]
         if not rows:
             messagebox.showinfo('Zmień rozmiar stron', 'Zaznacz strony w tabeli (Ctrl/Shift — kilka).', parent=self)
             return
@@ -1945,6 +1990,9 @@ class App(tk.Tk):
             messagebox.showinfo('Korekta rozmiaru', 'Zaznacz stronę w tabeli.', parent=self)
             return
         job, page = table_actions.parse_row(selection[0])
+        if page is None:
+            messagebox.showinfo('Korekta rozmiaru', 'Zaznaczony wiersz to wakat — wybierz stronę pliku.', parent=self)
+            return
         try:
             from page_box_ui import PageBoxDialog
             PageBoxDialog(self, job, page)
@@ -1993,7 +2041,7 @@ class App(tk.Tk):
             return
         job, page = table_actions.parse_row(selection[0])
         sizes = self._page_sizes(self.project.jobs[job].path)
-        if not sizes or page >= len(sizes):
+        if page is None or not sizes or page >= len(sizes):
             messagebox.showerror('Rozmiar użytka', 'Nie można odczytać rozmiaru strony.', parent=self)
             return
         w, h = (round(v, 2) for v in sizes[page])
@@ -2017,6 +2065,176 @@ class App(tk.Tk):
         self.variables['gross_w'].set(f'{round(w + 2 * gap, 3):g}')
         self.variables['gross_h'].set(f'{round(h + 2 * gap, 3):g}')
         self.schedule_refresh()
+
+    # --- Wiersze tabeli: wakaty, wstaw/zamień plik i stronę, schowek (page_rows.py) ------------------
+
+    def _count_pages(self, path):
+        sizes = self._page_sizes(path)
+        if sizes is None:
+            raise ValueError(f'Brak pliku: {path}')
+        return len(sizes)
+
+    def _selected_cells(self):
+        return [table_actions.parse_cell(iid) for iid in self.files.selection()]
+
+    def _current_cell(self, title):
+        cells = self._selected_cells()
+        if not cells:
+            messagebox.showinfo(title, 'Zaznacz wiersz w tabeli stron.', parent=self)
+            return None
+        return cells[0]
+
+    def _set_jobs(self, jobs, title, select=None):
+        self.project.jobs = jobs
+        self.side_index = 0
+        self._render_jobs(select)
+        self.refresh()
+
+    def _rows_action(self, title, action, select=None):
+        try:
+            jobs = action()
+        except Exception as exc:
+            messagebox.showerror(title, str(exc), parent=self)
+            return
+        self._set_jobs(jobs, title, select)
+
+    def insert_vacancy(self, where):
+        title = 'Wstaw wakat'
+        cell = self._current_cell(title)
+        if cell is None:
+            return
+        job, _, row = cell
+        count = 1
+        if where != page_rows.WHERE_HERE:
+            count = simpledialog.askinteger(title, 'Ilość wakatów:', initialvalue=1, minvalue=1, maxvalue=1000,
+                                            parent=self)
+            if not count:
+                return
+        def action():
+            jobs = list(self.project.jobs)
+            target = jobs[job]
+            n = self._count_pages(target.path)
+            rows = page_rows.insert_vacancy(job_rows(target, n), row, where, count)
+            jobs[job] = replace(target, pages=page_rows.stored(rows, n))
+            return jobs
+        self._rows_action(title, action, job)
+
+    def remove_vacancies(self):
+        def action():
+            jobs = []
+            for target in self.project.jobs:
+                n = self._count_pages(target.path)
+                jobs.append(replace(target, pages=page_rows.stored(page_rows.remove_vacancies(job_rows(target, n)), n)))
+            return page_rows.normalize(jobs, self._count_pages)
+        self._rows_action('Usuń wakaty', action)
+
+    def insert_file(self, where):
+        title = 'Wstaw plik'
+        cell = self._current_cell(title)
+        if cell is None:
+            return
+        job, _, row = cell
+        paths = filedialog.askopenfilenames(parent=self, title=title, filetypes=[('PDF', '*.pdf')])
+        if not paths:
+            return
+        self._rows_action(title, lambda: page_rows.insert_jobs(
+            self.project.jobs, job, row, where, [Job(path) for path in paths], self._count_pages), job)
+
+    def replace_with_file_page(self):
+        title = 'Zamień plik/stronę'
+        cell = self._current_cell(title)
+        if cell is None:
+            return
+        job, _, row = cell
+        path = filedialog.askopenfilename(parent=self, title=title, filetypes=[('PDF', '*.pdf')])
+        if not path:
+            return
+        try:
+            count = self._count_pages(path)
+        except Exception as exc:
+            messagebox.showerror(title, str(exc), parent=self)
+            return
+        page = 1 if count == 1 else simpledialog.askinteger(title, f'Strona (1–{count}):', initialvalue=1,
+                                                              minvalue=1, maxvalue=count, parent=self)
+        if not page:
+            return
+        template = next((j for j in self.project.jobs if j.path == path), None) or Job(path)
+        self._rows_action(title, lambda: page_rows.replace_with_page_of(
+            self.project.jobs, job, row, replace(template, pages=None), page - 1, self._count_pages), job)
+
+    def replace_with_same_file_page(self):
+        title = 'Zamień na inną stronę z pliku'
+        cell = self._current_cell(title)
+        if cell is None:
+            return
+        job, _, row = cell
+        target = self.project.jobs[job]
+        try:
+            count = self._count_pages(target.path)
+        except Exception as exc:
+            messagebox.showerror(title, str(exc), parent=self)
+            return
+        page = simpledialog.askinteger(title, f'Strona pliku {Path(target.path).name} (1–{count}):',
+                                       initialvalue=1, minvalue=1, maxvalue=count, parent=self)
+        if not page:
+            return
+        self._rows_action(title, lambda: page_rows.replace_with_page_of(
+            self.project.jobs, job, row, target, page - 1, self._count_pages), job)
+
+    def copy_rows(self, cut=False):
+        title = 'Wytnij' if cut else 'Kopiuj'
+        cells = [(job, row) for job, _, row in self._selected_cells()]
+        if not cells:
+            messagebox.showinfo(title, 'Zaznacz wiersze w tabeli stron.', parent=self)
+            return
+        try:
+            clip = page_rows.copy_rows(self.project.jobs, cells, self._count_pages)
+            jobs = page_rows.remove_rows(self.project.jobs, cells, self._count_pages) if cut else None
+        except Exception as exc:
+            messagebox.showerror(title, str(exc), parent=self)
+            return
+        self.row_clipboard = clip
+        self.status_text.set(f'{"Wycięto" if cut else "Skopiowano"} wierszy: {len(clip)}')
+        if cut:
+            self._set_jobs(jobs, title)
+
+    def cut_rows(self):
+        self.copy_rows(cut=True)
+
+    def paste_rows(self, where):
+        title = 'Wklej'
+        clip = getattr(self, 'row_clipboard', None)
+        if not clip:
+            messagebox.showinfo(title, 'Schowek jest pusty — najpierw Kopiuj albo Wytnij.', parent=self)
+            return
+        cell = self._current_cell(title)
+        if cell is None:
+            return
+        job, _, row = cell
+        self._rows_action(title, lambda: page_rows.insert_jobs(
+            self.project.jobs, job, row, where, page_rows.jobs_from_clipboard(clip, self._count_pages),
+            self._count_pages), job)
+
+    def select_rows_by(self, which):
+        try:
+            if which == 'in':
+                cells = page_rows.rows_included(self.project.jobs, self._count_pages, ROLE_SKIP)
+            elif which == 'out':
+                cells = page_rows.rows_excluded(self.project.jobs, self._count_pages, ROLE_SKIP)
+            else:
+                chosen = [(job, row) for job, _, row in self._selected_cells()]
+                if not chosen:
+                    return
+                cells = page_rows.rows_same(self.project.jobs, self._count_pages, chosen)
+        except Exception as exc:
+            messagebox.showerror('Zaznacz', str(exc), parent=self)
+            return
+        wanted = set(cells)
+        iids = [iid for iid in self.files.get_children()
+                if (table_actions.parse_cell(iid)[0], table_actions.parse_cell(iid)[2]) in wanted]
+        self.files.selection_set(iids)
+        if iids:
+            self.files.see(iids[0])
 
     def _skip_selected(self, skip):
         groups = table_actions.pages_by_job(list(self.files.selection()))

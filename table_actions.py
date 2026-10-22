@@ -1,6 +1,7 @@
 """Czysta logika menu kontekstowego tabeli stron (wzorowane na Impozycjonerze 4), bez Tk i PyMuPDF.
 
-Wiersz tabeli ma identyfikator „plik:strona” (oba numery od 0), np. „2:5”.
+Wiersz tabeli ma identyfikator „pozycja:strona:wiersz” (od 0), np. „2:5:7”; wakat ma stronę „-”, np. „2:-:3”.
+Starszy zapis „pozycja:strona” jest nadal czytany (wiersz = strona).
 Oryginał ma w menu tabeli m.in.: zaznacz wszystkie / parzyste / nieparzyste, odwróć zaznaczenie,
 znajdź pierwszy arkusz z tą stroną, usuń zaznaczone wiersze, ustaw rozmiar użytka równy stronie.
 Decyzje własne: parzystość liczona wg numeru strony w PDF (kolumna SPDF); „usunięcie” strony
@@ -14,9 +15,23 @@ SELECT_ODD = 'odd'
 SELECT_INVERT = 'invert'
 
 
-def parse_row(iid: str) -> tuple[int, int]:
-    job, page = iid.split(':')
-    return int(job), int(page)
+def row_id(job: int, page: int | None, row: int) -> str:
+    return f'{job}:{"-" if page is None else page}:{row}'
+
+
+def parse_cell(iid: str) -> tuple[int, int | None, int]:
+    """(pozycja, strona od 0 albo None dla wakatu, wiersz pozycji)."""
+    parts = iid.split(':')
+    if len(parts) == 2:
+        parts.append(parts[1])
+    job, page, row = parts
+    return int(job), None if page == '-' else int(page), int(row)
+
+
+def parse_row(iid: str) -> tuple[int, int | None]:
+    """(pozycja, strona od 0) — strona None oznacza wakat."""
+    job, page, _ = parse_cell(iid)
+    return job, page
 
 
 def select_rows(iids: list[str], which: str, current: list[str] = ()) -> list[str]:
@@ -28,7 +43,7 @@ def select_rows(iids: list[str], which: str, current: list[str] = ()) -> list[st
         return [iid for iid in iids if iid not in chosen]
     if which in (SELECT_EVEN, SELECT_ODD):
         want = 0 if which == SELECT_EVEN else 1
-        return [iid for iid in iids if (parse_row(iid)[1] + 1) % 2 == want]
+        return [iid for iid in iids if parse_row(iid)[1] is not None and (parse_row(iid)[1] + 1) % 2 == want]
     raise ValueError(f'Nieznany rodzaj zaznaczenia: {which}')
 
 
@@ -47,7 +62,8 @@ def pages_by_job(iids: list[str]) -> dict[int, list[int]]:
     result: dict[int, list[int]] = {}
     for iid in iids:
         job, page = parse_row(iid)
-        result.setdefault(job, []).append(page)
+        if page is not None:                # wakat nie ma strony w pliku
+            result.setdefault(job, []).append(page)
     return {job: sorted(set(pages)) for job, pages in result.items()}
 
 

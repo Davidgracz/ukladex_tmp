@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Page table row operations from the original's menu (submenu „Wiersze”): insert vacancy before / after /
+  here, remove all vacancies, insert file before / after, replace a row with a page of another file or of the
+  same file, copy / cut / paste before / after (Ctrl+C / X / V), select rows included / excluded / the same.
+  Projects store an optional row order per item (`pages`, numbers from 1, `null` = vacancy); old projects load
+  unchanged. Inserting into the middle of an item splits it with the same settings; refused for copies > 1.
+  Vacancies are empty slots (blank page in duplex pairs and single-page export, ignored in economic mode).
+  H-45.
+
 - Gross-field registration marks (S), modelled on the original's window: V1, V2, H1, H2 [mm], width [pt],
   colour (black / K 100 % / registration). Crosses at the four corners of the gross grid (H-44, OQ-18);
   preflight note when they leave the sheet; shortcut S. Off by default: example exports unchanged.
