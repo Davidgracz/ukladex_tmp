@@ -26,6 +26,7 @@ from ui_icons import draw as draw_icon
 from engine import RUN_MODES, RUN_ALL, gutter_notes, slug_notes, strip_notes, FILL_GROSS
 from engine import CROP_NET, CROP_GROSS, CROP_BLEED, crop_output_name, crop_to_file, job_rows, export_files
 import page_rows
+import autofill
 
 # Parametry znaczników (okna „definicji” w Imp4) trzymane poza polami wstęgi.
 MARK_PARAMS = ('mark_offset', 'mark_length', 'mark_width_pt',
@@ -42,7 +43,8 @@ MARK_PARAMS = ('mark_offset', 'mark_length', 'mark_width_pt',
                'strip_top', 'strip_bottom', 'strip_gutter', 'strip_cell_w', 'strip_cell_h', 'strip_zones',
                'strip_offset', 'strip_centered', 'strip_trim', 'strip_colors', 'strip_pdf',
                'own_folder', 'own_1l', 'own_1r', 'own_2l', 'own_2r', 'own_h1', 'own_v1', 'own_h2', 'own_v2',
-               'reg2_v1', 'reg2_v2', 'reg2_h1', 'reg2_h2', 'reg2_pt', 'reg2_color')
+               'reg2_v1', 'reg2_v2', 'reg2_h1', 'reg2_h2', 'reg2_pt', 'reg2_color',
+               'fill_pages', 'fill_corner', 'fill_columns', 'fill_stack', 'fill_repeat', 'fill_even_last')
 MARK_CHOICES = {'gross_mark_pages': ('Wszystkie', 'Nieparzyste', 'Parzyste'), 'reg_variant': (1, 2),
                 'slug_size': (10, 12, 14), 'slug_font': ('Arial', 'Courier'),
                 'mark_pages': ('Wszystkie', 'Nieparzyste', 'Parzyste'),
@@ -456,6 +458,12 @@ class App(tk.Tk):
         g = self._group(tab, 'Tabela (0 = auto)')
         self._spin(g, 'columns', 0, 0, 'K:', step=1, high=200, width=4)
         self._spin(g, 'rows', 1, 0, 'W:', step=1, high=200, width=4)
+
+        g = self._group(tab, 'Autowypełnianie')
+        ttk.Button(g, text='Autowypełnianie…', command=self.open_autofill).grid(row=0, column=0, sticky='ew')
+        self.autofill_text = tk.StringVar(value='')
+        ttk.Label(g, textvariable=self.autofill_text, style='Caption.TLabel', foreground=ACCENT,
+                  wraplength=150, justify='left').grid(row=1, column=0, rowspan=2, sticky='w')
 
         g = self._group(tab, 'Spady (na stronę) [mm]')
         self.variables['bleed'] = tk.StringVar(value='1.5')
@@ -1006,6 +1014,7 @@ class App(tk.Tk):
         self.white_trim_var.set(s.white_trim)
         self.auto_orient_var.set(s.auto_orient)
         self.mark_params = {key: getattr(s, key) for key in MARK_PARAMS}
+        self.autofill_text.set(self._autofill_summary())
         self._suspend_events=False
         self._render_jobs()
 
@@ -1697,6 +1706,91 @@ class App(tk.Tk):
                     self.slug_var, self.strip_var, self.own_var, self.reg2_var, self.labels_var):
             var.set(False)
         self.schedule_refresh()
+
+    def _autofill_summary(self):
+        p = self.mark_params
+        if autofill.is_default(p['fill_pages'], p['fill_corner'], p['fill_columns'], p['fill_stack'],
+                               p['fill_repeat'], p['fill_even_last']):
+            return 'domyślne: od LG, wierszami, kolejno'
+        parts = [f'od {p["fill_corner"]}', 'kolumnami' if p['fill_columns'] else 'wierszami',
+                 'w stosie' if p['fill_stack'] else 'kolejno']
+        if p['fill_pages'] != autofill.PAGES_ALL:
+            parts.append(p['fill_pages'].lower())
+        if p['fill_even_last']:
+            parts.append('NNNPPP')
+        if p['fill_repeat'] > 1:
+            parts.append(f'×{p["fill_repeat"]}')
+        return ', '.join(parts)
+
+    def open_autofill(self):
+        """Okno „Autowypełnianie arkusza” (jak w Imp4): narożnik, kierunek, stos, strony, powtórzenia."""
+        p = self.mark_params
+        dlg = tk.Toplevel(self)
+        dlg.title('Autowypełnianie arkusza')
+        dlg.configure(background=BG)
+        dlg.transient(self)
+        body = ttk.Frame(dlg, padding=16)
+        body.pack(fill='both', expand=True)
+        ttk.Label(body, text='Narożnik startowy siatki i kierunek wypełniania stronami PDF:').grid(
+            row=0, column=0, columnspan=2, sticky='w')
+        corner = tk.StringVar(value=p['fill_corner'])
+        corners = ttk.Frame(body)
+        corners.grid(row=1, column=0, columnspan=2, sticky='w', pady=(2, 6))
+        for i, (value, text) in enumerate((('LG', 'START LG (lewy górny)'), ('PG', 'START PG (prawy górny)'),
+                                           ('LD', 'START LD (lewy dolny)'), ('PD', 'START PD (prawy dolny)'))):
+            ttk.Radiobutton(corners, text=text, value=value, variable=corner).grid(row=i // 2, column=i % 2,
+                                                                                  sticky='w', padx=(0, 14))
+        columns = tk.BooleanVar(value=p['fill_columns'])
+        ttk.Checkbutton(body, text='Kierunek wypełniania: kolumnami (domyślnie wierszami)', variable=columns).grid(
+            row=2, column=0, columnspan=2, sticky='w')
+        stack = tk.BooleanVar(value=p['fill_stack'])
+        ttk.Checkbutton(body, text='Tryb: strony w stosie (kolejne strony w tym samym polu na kolejnych arkuszach)',
+                        variable=stack).grid(row=3, column=0, columnspan=2, sticky='w')
+        ttk.Label(body, text='Wypełniaj stronami:').grid(row=4, column=0, sticky='w', pady=(8, 0))
+        pages = tk.StringVar(value=p['fill_pages'])
+        ttk.Combobox(body, textvariable=pages, values=autofill.PAGE_CHOICES, state='readonly', width=16).grid(
+            row=4, column=1, sticky='w', pady=(8, 0))
+        even_last = tk.BooleanVar(value=p['fill_even_last'])
+        ttk.Checkbutton(body, text='Strony parzyste po wszystkich nieparzystych (NNNPPP; domyślnie NPNPNP)',
+                        variable=even_last).grid(row=5, column=0, columnspan=2, sticky='w')
+        ttk.Label(body, text='Ilość powtórzeń każdej strony:').grid(row=6, column=0, sticky='w', pady=(8, 0))
+        repeat = tk.StringVar(value=str(p['fill_repeat']))
+        ttk.Spinbox(body, from_=1, to=autofill.MAX_REPEAT, textvariable=repeat, width=6).grid(
+            row=6, column=1, sticky='w', pady=(8, 0))
+        ttk.Label(body, text='Działa w montażu jednostronnym i dwustronnym (w dwustronnym: wszystkie strony, pary '
+                             'przód/tył zostają razem).', style='Muted.TLabel', wraplength=430).grid(
+            row=7, column=0, columnspan=2, sticky='w', pady=(8, 0))
+
+        def apply(values):
+            new = dict(self.mark_params, **values)
+            try:
+                if type(new['fill_repeat']) is not int:
+                    raise ValueError('Ilość powtórzeń: liczba całkowita 1–1000')
+                validate(replace(self._read_fields(), **new))
+            except ValueError as exc:
+                messagebox.showerror('Autowypełnianie', str(exc), parent=dlg)
+                return
+            self.mark_params = new
+            self.autofill_text.set(self._autofill_summary())
+            dlg.destroy()
+            self.side_index = 0
+            self.schedule_refresh()
+
+        def ok():
+            try:
+                count = int(repeat.get().strip())
+            except ValueError:
+                count = None
+            apply(dict(fill_corner=corner.get(), fill_columns=columns.get(), fill_stack=stack.get(),
+                       fill_pages=pages.get(), fill_even_last=even_last.get(), fill_repeat=count))
+
+        actions = ttk.Frame(body)
+        actions.grid(row=8, column=0, columnspan=2, sticky='e', pady=(12, 0))
+        ttk.Button(actions, text='Anuluj', command=dlg.destroy).pack(side='right')
+        ttk.Button(actions, text='Domyślne', command=lambda: apply(dict(
+            fill_corner='LG', fill_columns=False, fill_stack=False, fill_pages=autofill.PAGES_ALL,
+            fill_even_last=False, fill_repeat=1))).pack(side='right', padx=6)
+        ttk.Button(actions, text='OK', style='Accent.TButton', command=ok).pack(side='right')
 
     def open_mark_settings(self, kind):
         """Okno parametrów znacznika; zły wpis nie zmienia ustawień (walidacja przez silnik)."""

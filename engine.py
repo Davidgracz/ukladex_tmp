@@ -193,6 +193,13 @@ class Settings:
     reg2_color: str = 'Rejestracyjny (100 % CMYK)'   # zob. marks.MARK_COLORS
     # Łączenie plików wynikowych (naming.OUTPUT_MODES, H-48): domyślnie jeden plik, jak dotąd.
     output_files: str = 'Jeden plik'
+    # Autowypełnianie arkusza (autofill.py, H-49) — wartości domyślne = dotychczasowe wypełnianie.
+    fill_pages: str = 'Wszystkimi'
+    fill_corner: str = 'LG'
+    fill_columns: bool = False
+    fill_stack: bool = False
+    fill_repeat: int = 1
+    fill_even_last: bool = False
 
     def __post_init__(self):
         # JSON zapisuje krotki jako listy — wracamy do niezmiennej postaci (porównania, wartości domyślne).
@@ -368,6 +375,13 @@ def validate(settings: Settings):
         raise ValueError(f'Kolor paserów w polu brutto: {", ".join(marks_rules.MARK_COLORS)}')
     import naming
     naming.output_parts(settings.output_files)
+    import autofill
+    autofill.check(settings.fill_pages, settings.fill_corner, settings.fill_repeat)
+    if not autofill_default(settings) and settings.mode not in ('Jednostronnie', 'Dwustronnie'):
+        raise ValueError('Autowypełnianie działa w montażu jednostronnym i dwustronnym — przywróć ustawienia domyślne.')
+    if settings.mode == 'Dwustronnie' and (settings.fill_pages != autofill.PAGES_ALL or settings.fill_even_last):
+        raise ValueError('W montażu dwustronnym autowypełnianie bierze wszystkie strony w parach przód/tył — '
+                         'wybór parzystych/nieparzystych i „parzyste na końcu” rozbiłyby pary.')
     if not isinstance(settings.own_folder, str):
         raise ValueError('Znaczniki własne: folder musi być tekstem')
     for key, label in (('own_h1', 'H strony nieparzystej'), ('own_v1', 'V strony nieparzystej'),
@@ -755,6 +769,32 @@ def economic_report(project: Project, docs: dict[str, fitz.Document]) -> Economi
     return EconomicReport(sheets, cap, occupied, sheets*cap-occupied, lines,
                           tuple(EconomicPattern(v[2], v[0], v[1]) for v in patterns.values()))
 
+def autofill_default(s: Settings) -> bool:
+    import autofill
+    return autofill.is_default(s.fill_pages, s.fill_corner, s.fill_columns, s.fill_stack, s.fill_repeat,
+                               s.fill_even_last)
+
+
+def fill_slots(s: Settings, g: Geometry | None = None) -> list[Slot]:
+    """Pola siatki w kolejności wypełniania (narożnik startowy, wiersze/kolumny); domyślnie jak dotąd."""
+    import autofill
+    g = g or geometry(s)
+    order = autofill.slot_order([(slot.col, slot.row) for slot in g.slots], s.fill_corner, s.fill_columns)
+    return [g.slots[i] for i in order]
+
+
+def _filled_groups(units, s: Settings, capacity: int, page_number):
+    import autofill
+    if autofill_default(s):
+        iterator = iter(units)
+        while group := tuple(islice(iterator, capacity)):
+            yield group
+        return
+    ordered = autofill.sequence(list(units), page_number, s.fill_pages, s.fill_even_last, s.fill_repeat)
+    for group in autofill.sheets(ordered, capacity, s.fill_stack):
+        yield tuple(group)
+
+
 def plan_sides(jobs: list[Job], documents: dict[str, fitz.Document], s: Settings) -> Iterator[SheetSide]:
     if not jobs:
         return
@@ -765,21 +805,20 @@ def plan_sides(jobs: list[Job], documents: dict[str, fitz.Document], s: Settings
         yield from _economic_sides(jobs, documents, s)
         return
     g = geometry(s)
+    slots = fill_slots(s, g)
     if s.mode == 'Jednostronnie':
-        iterator = iter(_page_refs(jobs, documents))
-        sheet_no = 0
-        while group := tuple(islice(iterator, g.capacity)):
-            sheet_no += 1
-            yield SheetSide(sheet_no, 0, tuple(Placement(p, g.slots[i], 0)
+        groups = _filled_groups(_page_refs(jobs, documents), s, g.capacity,
+                                lambda ref: None if ref is None else ref.index + 1)
+        for sheet_no, group in enumerate(groups, start=1):
+            yield SheetSide(sheet_no, 0, tuple(Placement(p, slots[i], 0)
                                                 for i, p in enumerate(group)))
     else:
-        iterator = iter(_duplex_pairs(jobs, documents))
-        sheet_no = 0
-        while group := tuple(islice(iterator, g.capacity)):
-            sheet_no += 1
-            yield SheetSide(sheet_no, 0, tuple(Placement(pair[0], g.slots[i], 0)
+        groups = _filled_groups(_duplex_pairs(jobs, documents), s, g.capacity,
+                                lambda pair: None if pair[0] is None else pair[0].index + 1)
+        for sheet_no, group in enumerate(groups, start=1):
+            yield SheetSide(sheet_no, 0, tuple(Placement(pair[0], slots[i], 0)
                                                 for i, pair in enumerate(group)))
-            yield SheetSide(sheet_no, 1, tuple(Placement(pair[1], _flip_slot(g.slots[i], s), 1)
+            yield SheetSide(sheet_no, 1, tuple(Placement(pair[1], _flip_slot(slots[i], s), 1)
                                                 for i, pair in enumerate(group)))
 
 
@@ -823,8 +862,9 @@ def _complete_side(side: SheetSide, s: Settings, needed: int) -> SheetSide:
     if needed > g.capacity:
         raise ValueError(f'Pole ręcznego montażu {needed} wykracza poza siatkę {g.capacity}.')
     items = list(side.placements)
+    slots = fill_slots(s, g)
     for i in range(len(items), needed):
-        slot = g.slots[i]
+        slot = slots[i]
         if side.side == 1 and s.mode == 'Dwustronnie':
             slot = _flip_slot(slot, s)
         items.append(Placement(None, slot, side.side))
@@ -956,7 +996,7 @@ def set_slot_transform(project: Project, side: SheetSide, index: int, *,
         # Recover the original from a per-cell editor's already-adjusted slot.
         base = _undo_slot_edit(side.placements[index].slot, entry)
     else:
-        normal = geometry(project.settings).slots[index]
+        normal = fill_slots(project.settings)[index]   # indeks pola = kolejność wypełniania (autowypełnianie)
         if side.side == 1 and project.settings.mode == 'Dwustronnie':
             normal = _flip_slot(normal, project.settings)
         base = normal
