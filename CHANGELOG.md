@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.5.4
+
+Nowości w ImpoCraft 0.5.4:
+- **Autowypełnianie arkusza** (wstęga „Montaż akcydensów” → „Autowypełnianie…”): narożnik startowy LG / PG / LD / PD,
+  wierszami albo kolumnami, strony kolejno albo w stosie (pod cięcie stosu), wszystkie / nieparzyste / parzyste,
+  NPNP albo NNNPPP, powtórzenia każdej strony.
+- **Łączenie plików wynikowych** („Ustawienia…”): jeden plik, osobne pliki arkuszy, każda strona osobno
+  i ich połączenia (7 wariantów).
+
+Details (English):
+
 - Sheet autofill from the original's „Autowypełnianie arkusza” window (ribbon „Montaż akcydensów” →
   „Autowypełnianie…”): start corner LG / PG / LD / PD, rows or columns, pages in sequence or in a stack
   (cut-and-stack), all / odd / even pages, even pages after each odd one or after all odd ones, repeats of each
