@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Sheet autofill from the original's „Autowypełnianie arkusza” window (ribbon „Montaż akcydensów” →
+  „Autowypełnianie…”): start corner LG / PG / LD / PD, rows or columns, pages in sequence or in a stack
+  (cut-and-stack), all / odd / even pages, even pages after each odd one or after all odd ones, repeats of each
+  page. Single- and double-sided imposition (pairs stay together); defaults reproduce the previous layout
+  (example exports unchanged). Stored in the project. H-49.
+
 - Output file splitting from the original's „Łączenie plików wynikowych” (seven variants: one file, sheets,
   each page separately and their combinations) in „Ustawienia — plik wynikowy”, stored in the project (old
   projects: one file). Sheet files `<name>--arkusz-NN.pdf` hold front and back; page files `<name>--NN.pdf`.
