@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 0.5.3
+
+Nowości w ImpoCraft 0.5.3:
+- **Tabela stron — wiersze** (prawy przycisk → Wiersze): wakaty przed / po / tutaj, usuń wakaty, wstaw plik przed / po,
+  zamień wiersz na stronę innego pliku albo inną stronę z pliku, kopiuj / wytnij / wklej (Ctrl+C / X / V);
+  zaznacz wiersze ujęte / nieujęte / takie same.
+- **Rozetnij strony PDF** (Programy dodatkowe): kolumny × wiersze, zakładki do sklejania ze znacznikiem i opisem.
+- **Rozetnij rozkładówki** (Programy dodatkowe): rozkładówki na pojedyncze strony z TrimBox i spadami.
+- **Pasery w polu brutto (S)** na pasku znaczników: V1, V2, H1, H2, grubość, kolor.
+- **Nazwa pliku po impozycji**: podpowiadana jako `nazwa_oryginału_93x53mm_impozycja.pdf` w folderze oryginału.
+
+Details (English):
+
 - Suggested output file name (ImpoCraft's own rule, requested by the user — not from the original):
   `<source file name>_<net width>x<net height>mm_impozycja.pdf` (single-page export: `…_strony.pdf`), e.g.
   `wizytowki_93x53mm_impozycja.pdf`, in the folder of the first source file; decimal comma (`105x148,5mm`),
