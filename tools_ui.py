@@ -10,9 +10,12 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
+from PIL import ImageTk
+
 import barcodes
 import marks
 import pdftools
+from ui_icons import draw_tool
 
 PANEL = '#ffffff'
 ACCENT = '#2f6fc2'
@@ -36,39 +39,48 @@ class Tool:
     # Dodatkowe pola: (klucz, etykieta, wartość domyślna, rodzaj) — rodzaj 'quad' = 4 pola L/P/G/D,
     # 'opt' = liczba albo puste, 'size' = „szer. × wys.” albo puste, 'text' = dowolny tekst (np. kolor C/M/Y/K).
     fields: tuple[tuple[str, str, str, str], ...] = ()
+    icon: str = 'extract'  # ikona kafelka (ui_icons.draw_tool)
+    category: str = ''     # grupa w menu kafelków
+
+
+CATEGORIES = ('Dziel i łącz', 'Wybierz i usuń strony', 'Kolejność i obrót', 'Format, spady i cięcie', 'Kody')
 
 
 TOOLS = (
     Tool('Rozdziel na pojedyncze strony', 'Każda strona w osobnym pliku: nazwa--01.pdf, nazwa--02.pdf…',
-         'folder', range_field='optional'),
+         'folder', range_field='optional', icon='split', category='Dziel i łącz'),
     Tool('Połącz pliki PDF', 'Łączy pliki w kolejności listy (co najmniej 2).', 'file', '--polaczone',
-         many_inputs=True),
+         many_inputs=True, icon='merge', category='Dziel i łącz'),
     Tool('Wydziel strony z zakresu', 'Zapisuje wskazane strony do nowego pliku.', 'folder',
-         range_field='required', options=('Każda strona w osobnym pliku', 'Utwórz też plik bez stron wydzielonych')),
-    Tool('Wydziel parzyste i nieparzyste', 'Dwa pliki: nazwa--nieparzyste.pdf i nazwa--parzyste.pdf.', 'folder'),
-    Tool('Wydziel okładkę i wkład', 'Okładka = strony 1, 2, przedostatnia i ostatnia (min. 5 stron).', 'folder'),
+         range_field='required', options=('Każda strona w osobnym pliku', 'Utwórz też plik bez stron wydzielonych'), icon='extract', category='Wybierz i usuń strony'),
+    Tool('Usuń wybrane strony',
+         'Zapisuje nowy plik bez wskazanych stron; pozostałe strony w tej samej kolejności. '
+         'Plik źródłowy zostaje bez zmian.',
+         'file', '--bez_stron', range_field='required', icon='delete', category='Wybierz i usuń strony'),
+    Tool('Wydziel parzyste i nieparzyste', 'Dwa pliki: nazwa--nieparzyste.pdf i nazwa--parzyste.pdf.', 'folder', icon='evenodd', category='Wybierz i usuń strony'),
+    Tool('Wydziel okładkę i wkład', 'Okładka = strony 1, 2, przedostatnia i ostatnia (min. 5 stron).', 'folder', icon='cover', category='Dziel i łącz'),
     Tool('Wydziel zakresy po N stron', 'Kolejne pliki po N stron; ostatni może być krótszy.', 'folder',
-         number='Stron w każdym pliku:'),
+         number='Stron w każdym pliku:', icon='chunks', category='Dziel i łącz'),
     Tool('Obróć strony', 'Kąt dodaje się do bieżącego obrotu strony.', 'file', '--obrot',
-         range_field='optional', number='Kąt (0, 90, 180, 270):', options=('Dla stron parzystych dodaj +180°',)),
+         range_field='optional', number='Kąt (0, 90, 180, 270):', options=('Dla stron parzystych dodaj +180°',), icon='rotate', category='Kolejność i obrót'),
     Tool('Powiel strony', 'Każda wskazana strona N razy pod rząd.', 'file', '--powielone',
-         range_field='optional', number='Powiel × (2–1000):'),
+         range_field='optional', number='Powiel × (2–1000):', icon='duplicate', category='Kolejność i obrót'),
     Tool('Tasuj strony / kartki', 'Strony: 1,2,3,4 → 4,3,2,1. Kartki: 1,2,3,4 → 3,4,1,2.', 'file', '--tasowane',
-         options=('Tasuj kartki (pary stron)',)),
+         options=('Tasuj kartki (pary stron)',), icon='shuffle', category='Kolejność i obrót'),
     Tool('Dodaj spady',
          'Jak w Impozycjonerze 4: z każdej krawędzi bierze się wycinek grafiki i rozciąga go na spad. '
          'Odległość wycinka od krawędzi pozwala pominąć biały margines strony (np. 5 mm).',
          'file', '--spady', range_field='optional', options=('Spady pod stroną (domyślnie: nad stroną)',),
          fields=(('bleed', 'Dodawany spad [mm]', '3', 'quad'),
                  ('strip', 'Szerokość wycinka [mm]', '1', 'quad'),
-                 ('offset', 'Odległość wycinka od krawędzi PDF (MediaBox) [mm]', '0', 'quad'))),
+                 ('offset', 'Odległość wycinka od krawędzi PDF (MediaBox) [mm]', '0', 'quad')), icon='bleed', category='Format, spady i cięcie'),
     Tool('Skaluj strony',
          'Zmienia rozmiar stron (wektorowo). Puste pole wymiaru = proporcjonalnie do drugiego.',
          'file', '--skalowane', range_field='optional',
          options=('Procentowo (zamiast mm)', 'Rozmiar dotyczy MediaBox (domyślnie TrimBox)'),
          fields=(('width', 'Szerokość [mm lub %]', '105', 'opt'),
                  ('height', 'Wysokość [mm lub %]', '', 'opt'),
-                 ('page', 'Wyśrodkuj na stronie szer. × wys. [mm] (puste = jak po przeskalowaniu)', '', 'size'))),
+                 ('page', 'Wyśrodkuj na stronie szer. × wys. [mm] (puste = jak po przeskalowaniu)', '', 'size')), icon='scale', category='Format, spady i cięcie'),
     Tool('Rozetnij strony PDF',
          'Każda strona → kolumny × wiersze nowych stron (np. plakat na kafle), wektorowo. Zakładka = pas treści '
          'sąsiedniej części do sklejenia; znacznik = kreski na linii styku. Strony spoza zakresu bez zmian.',
@@ -79,15 +91,15 @@ TOOLS = (
                  ('tab', 'Zakładka [mm] (0 = bez zakładek)', '0', 'opt'),
                  ('mark', 'Długość znacznika zakładki [mm] (0 = bez)', '5', 'opt'),
                  ('mark_pt', 'Grubość znacznika [pt]', '0.5', 'opt'),
-                 ('color', 'Kolor znacznika i opisu C/M/Y/K [%]', '0/0/0/100', 'text'))),
+                 ('color', 'Kolor znacznika i opisu C/M/Y/K [%]', '0/0/0/100', 'text')), icon='grid', category='Format, spady i cięcie'),
     Tool('Rozetnij rozkładówki',
          'Każda rozkładówka → lewa i prawa strona z TrimBox i spadami (spad przy grzbiecie z treści sąsiedniej '
          'strony). Strony o rozmiarze pojedynczej strony zostają bez zmian.',
          'file', '--strony', options=('Rozcinaj pierwszą stronę', 'Rozcinaj ostatnią stronę'),
-         fields=(('page', 'Rozmiar strony szer. × wys. [mm] (puste = TrimBox pierwszej strony)', '', 'size'),)),
-    Tool('Kody EAN-13 / EAN-8 z pliku tekstowego',
-         'Jeden kod w wierszu (EAN-13: 12/13 cyfr, EAN-8: 7/8). Każdy kod na osobnej stronie, wektorowo.',
-         'file', '--EAN', options=('EAN-8 zamiast EAN-13',), text_input=True),
+         fields=(('page', 'Rozmiar strony szer. × wys. [mm] (puste = TrimBox pierwszej strony)', '', 'size'),), icon='spreads', category='Format, spady i cięcie'),
+    Tool('Kody EAN-13 / EAN-8',
+         'Kody z pliku tekstowego (.txt): jeden kod w wierszu (EAN-13: 12/13 cyfr, EAN-8: 7/8). Każdy kod na osobnej stronie, wektorowo.',
+         'file', '--EAN', options=('EAN-8 zamiast EAN-13',), text_input=True, icon='barcode', category='Kody'),
 )
 
 
@@ -102,17 +114,38 @@ class PdfToolsFrame(ttk.Frame):
                   foreground=MUTED).grid(row=1, column=0, columnspan=2, sticky='w', pady=(2, 14))
 
         self.tool_var = tk.StringVar(value=TOOLS[0].name)
-        tools = ttk.Frame(self)
+        self._icons = {}
+        self._style_tiles()
+        tools = ttk.Frame(self, style='Tiles.TFrame', padding=(8, 6))
         tools.grid(row=2, column=0, sticky='nw', padx=(0, 20))
-        for tool in TOOLS:
-            ttk.Radiobutton(tools, text=tool.name, value=tool.name, variable=self.tool_var,
-                            command=self._update).pack(anchor='w', pady=2)
+        row = 0
+        for category in CATEGORIES:
+            members = [tool for tool in TOOLS if tool.category == category]
+            if not members:
+                continue
+            ttk.Label(tools, text=category.upper(), style='TileHeader.TLabel').grid(
+                row=row, column=0, columnspan=2, sticky='w', pady=(8 if row else 0, 2))
+            row += 1
+            for i, tool in enumerate(members):
+                tile = ttk.Radiobutton(tools, text=tool.name, value=tool.name, variable=self.tool_var,
+                                       image=self._icon(tool.icon, 28), compound='left', style='Tile.Toolbutton',
+                                       command=self._update, width=27)
+                tile.grid(row=row + i // 2, column=i % 2, sticky='ew', padx=2, pady=2)
+            row += (len(members) + 1) // 2
 
         form = ttk.Frame(self)
         form.grid(row=2, column=1, sticky='nsew')
         form.columnconfigure(0, weight=1)
+        header = ttk.Frame(form)
+        header.grid(row=0, column=0, sticky='ew', pady=(0, 4))
+        self.header_icon = ttk.Label(header)
+        self.header_icon.pack(side='left', padx=(0, 10))
+        heading = ttk.Frame(header)
+        heading.pack(side='left', fill='x', expand=True)
+        self.title_var = tk.StringVar()
+        ttk.Label(heading, textvariable=self.title_var, font=('Segoe UI', 14, 'bold'), foreground=TEXT).pack(anchor='w')
         self.hint = tk.StringVar()
-        ttk.Label(form, textvariable=self.hint, foreground=MUTED, wraplength=620).grid(row=0, column=0, sticky='w')
+        ttk.Label(heading, textvariable=self.hint, foreground=MUTED, wraplength=560, justify='left').pack(anchor='w')
         files = ttk.Frame(form)
         files.grid(row=1, column=0, sticky='ew', pady=8)
         files.columnconfigure(0, weight=1)
@@ -147,6 +180,21 @@ class PdfToolsFrame(ttk.Frame):
         self.rowconfigure(2, weight=1)
         self._update()
 
+    def _style_tiles(self):
+        style = ttk.Style(self)
+        style.configure('Tiles.TFrame', background=PANEL)
+        style.configure('TileHeader.TLabel', background=PANEL, foreground=ACCENT, font=('Segoe UI', 9, 'bold'))
+        style.configure('Tile.Toolbutton', background=PANEL, foreground=TEXT, anchor='w', padding=(6, 4),
+                        font=('Segoe UI', 9))
+        style.map('Tile.Toolbutton', background=[('selected', '#d6e6fb'), ('active', '#eef4fd')],
+                  foreground=[('selected', '#173f74')], relief=[('selected', 'solid'), ('!selected', 'flat')])
+
+    def _icon(self, name, size):
+        key = (name, size)
+        if key not in self._icons:
+            self._icons[key] = ImageTk.PhotoImage(draw_tool(name, size), master=self)
+        return self._icons[key]
+
     @property
     def tool(self) -> Tool:
         return next(t for t in TOOLS if t.name == self.tool_var.get())
@@ -154,6 +202,8 @@ class PdfToolsFrame(ttk.Frame):
     def _update(self):
         tool = self.tool
         self.hint.set(tool.hint)
+        self.title_var.set(tool.name)
+        self.header_icon.configure(image=self._icon(tool.icon, 48))
         self.range_frame.grid_forget()
         self.number_frame.grid_forget()
         for button in self.option_buttons:
@@ -305,6 +355,8 @@ class PdfToolsFrame(ttk.Frame):
                 written = pdftools.merge(self.inputs, target)
             elif name == 'Wydziel strony z zakresu':
                 written = pdftools.extract(first, target, pages, each_separately=opt[0], remainder=opt[1])
+            elif name == 'Usuń wybrane strony':
+                written = pdftools.delete_pages(first, target, pages)
             elif name == 'Wydziel parzyste i nieparzyste':
                 written = pdftools.extract_even_odd(first, target)
             elif name == 'Wydziel okładkę i wkład':
