@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.5.5
+
+Nowości i poprawki w ImpoCraft 0.5.5:
+- **Ramka użytku (A)** na pasku znaczników: cienka ramka dookoła każdego użytku, na krawędzi netto i/lub brutto,
+  grubość i kolor do wyboru (prawy przycisk → parametry).
+- **Poprawka:** wraca przycisk „Sprawdź aktualizacje” na dolnym pasku (znikał, bo okno było za wysokie).
+  Przyciski znaczników są teraz w dwóch kolumnach, a okno mieści się także na laptopie 1366 × 768.
+
+Details (English):
+
 - Fix: the bottom bar with „Sprawdź aktualizacje” disappeared — the marks bar had grown to 11 buttons in one column,
   the window needed ~1150 px and the bottom bar was squeezed to 1 px. The bottom bar is now packed before the
   middle of the window and the marks are laid out in two columns (required height ~830 px). Regression test added.

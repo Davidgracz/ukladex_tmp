@@ -6,7 +6,7 @@ Z tych wartości korzystają okno programu, metadane eksportowanych PDF, informa
 from __future__ import annotations
 
 APP_NAME = 'ImpoCraft'
-VERSION = '0.5.4'
+VERSION = '0.5.5'
 AUTHOR = 'Dawid Gracz'
 COPYRIGHT_YEAR = '2026'
 DESCRIPTION = 'Impozycja (montaż) PDF do druku'
