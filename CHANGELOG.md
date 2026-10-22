@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Gross-field registration marks (S), modelled on the original's window: V1, V2, H1, H2 [mm], width [pt],
+  colour (black / K 100 % / registration). Crosses at the four corners of the gross grid (H-44, OQ-18);
+  preflight note when they leave the sheet; shortcut S. Off by default: example exports unchanged.
+
 ## 0.5.2
 
 Nowości w ImpoCraft 0.5.2:

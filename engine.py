@@ -181,6 +181,14 @@ class Settings:
     own_v1: float = 15.0          # mm od dolnej krawędzi do górnego narożnika znacznika
     own_h2: float = 5.0
     own_v2: float = 15.0
+    # Pasery w polu brutto (S) — marks.gross_register_segments, H-44.
+    reg2_on: bool = False
+    reg2_v1: float = 5.0          # mm nad krawędzią brutto (długość kreski pionowej poza użytkami)
+    reg2_v2: float = 5.0          # mm wzdłuż użytku (V1 + V2 = długość kreski pionowej)
+    reg2_h1: float = 3.0          # mm od krawędzi brutto użytka do kreski pionowej
+    reg2_h2: float = 3.0          # H1 + H2 = długość kreski poziomej
+    reg2_pt: float = 0.25
+    reg2_color: str = 'Rejestracyjny (100 % CMYK)'   # zob. marks.MARK_COLORS
 
     def __post_init__(self):
         # JSON zapisuje krotki jako listy — wracamy do niezmiennej postaci (porównania, wartości domyślne).
@@ -344,6 +352,16 @@ def validate(settings: Settings):
         raise ValueError('Sprawdź kolory kostek! Przynajmniej jedna powinna mieć zdefiniowany kolor.')
     if not isinstance(settings.strip_pdf, str):
         raise ValueError('Pasek z pliku PDF: ścieżka musi być tekstem')
+    for key, label in (('reg2_v1', 'V1'), ('reg2_v2', 'V2'), ('reg2_h1', 'H1'), ('reg2_h2', 'H2')):
+        value = getattr(settings, key)
+        if type(value) not in (int, float) or not isfinite(value) or not 0 <= value <= 100:
+            raise ValueError(f'Pasery w polu brutto, {label} [mm]: dozwolone 0–100')
+    if settings.reg2_v1 + settings.reg2_v2 <= 0 or settings.reg2_h1 + settings.reg2_h2 <= 0:
+        raise ValueError('Pasery w polu brutto: V1 + V2 i H1 + H2 muszą być większe od 0')
+    if type(settings.reg2_pt) not in (int, float) or not isfinite(settings.reg2_pt) or not 0.05 <= settings.reg2_pt <= 5:
+        raise ValueError('Pasery w polu brutto, grubość [pt]: dozwolone 0,05–5')
+    if settings.reg2_color not in marks_rules.MARK_COLORS:
+        raise ValueError(f'Kolor paserów w polu brutto: {", ".join(marks_rules.MARK_COLORS)}')
     if not isinstance(settings.own_folder, str):
         raise ValueError('Znaczniki własne: folder musi być tekstem')
     for key, label in (('own_h1', 'H strony nieparzystej'), ('own_v1', 'V strony nieparzystej'),
@@ -1447,6 +1465,22 @@ def own_marks_notes(s: Settings) -> list[str]:
     return notes
 
 
+def reg2_notes(s: Settings) -> list[str]:
+    """Uwaga, gdy pasery w polu brutto wychodzą poza arkusz przy obecnej siatce."""
+    if not s.reg2_on:
+        return []
+    g = geometry(s)
+    b = bleed_for(s)
+    slots = list(g.slots)
+    if not slots:
+        return []
+    grid = marks_rules.bounding([(sl.x - b, sl.y - b, sl.x + sl.w + b, sl.y + sl.h + b) for sl in slots])
+    for (x0, y0), (x1, y1) in marks_rules.gross_register_segments(grid, s.reg2_v1, s.reg2_v2, s.reg2_h1, s.reg2_h2):
+        if min(x0, x1) < 0 or min(y0, y1) < 0 or max(x0, x1) > s.sheet_w or max(y0, y1) > s.sheet_h:
+            return ['Pasery w polu brutto wychodzą poza arkusz — zmniejsz V1/H1/H2 albo zwiększ marginesy.']
+    return []
+
+
 def strip_notes(s: Settings) -> list[str]:
     if not s.strip_on or s.mode == 'Broszura':
         return []
@@ -1473,7 +1507,7 @@ def _slug_for(side: SheetSide, s: Settings, output_name: str | None, when=None) 
 
 def draw_sheet_marks(target: fitz.Page, side: SheetSide, s: Settings, output_name: str | None = None, when=None):
     """Znaczniki brutto, pasery i opis impozycji na stronie arkusza (wszystkie domyślnie wyłączone)."""
-    if not (s.gross_marks or s.reg_marks or s.slug_on or s.strip_on) or not side.placements:
+    if not (s.gross_marks or s.reg_marks or s.reg2_on or s.slug_on or s.strip_on) or not side.placements:
         return
     sheet = (0.0, 0.0, s.sheet_w, s.sheet_h)
     all_gross = _gross_rects(side, s, placed_only=False)
@@ -1502,6 +1536,11 @@ def draw_sheet_marks(target: fitz.Page, side: SheetSide, s: Settings, output_nam
             shape.draw_line((pt(cx), pt(cy - r)), (pt(cx), pt(cy + r)))
             shape.finish(color=REGISTRATION, fill=None, width=s.reg_pt)
             shape.commit()
+    if s.reg2_on and grid is not None:
+        color = marks_rules.MARK_COLORS[s.reg2_color]
+        for (x0, y0), (x1, y1) in marks_rules.gross_register_segments(grid, s.reg2_v1, s.reg2_v2, s.reg2_h1,
+                                                                       s.reg2_h2):
+            target.draw_line((pt(x0), pt(y0)), (pt(x1), pt(y1)), color=color, width=s.reg2_pt)
     if s.slug_on:
         text = _slug_for(side, s, output_name, when)
         font = fitz.Font(SLUG_FONTS[s.slug_font])

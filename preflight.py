@@ -11,7 +11,7 @@ import json
 
 import pymupdf as fitz
 
-from engine import Job, Project, Settings, mm, media_rect, open_sources, scaling_layout, validate, bleed_for, gross_dimensions, validate_job_roles, _duplex_pairs, project_sides, overlapping_uses, plan_sides, crop_offsets, crop_centre, ROLE_AUTO, ROLE_SKIP, economic_report, gutter_notes, FILL_GROSS, slug_notes, strip_notes, orientation_differs, own_marks_notes
+from engine import Job, Project, Settings, mm, media_rect, open_sources, scaling_layout, validate, bleed_for, gross_dimensions, validate_job_roles, _duplex_pairs, project_sides, overlapping_uses, plan_sides, crop_offsets, crop_centre, ROLE_AUTO, ROLE_SKIP, economic_report, gutter_notes, FILL_GROSS, slug_notes, strip_notes, orientation_differs, own_marks_notes, reg2_notes
 
 
 @dataclass(frozen=True)
@@ -147,7 +147,7 @@ def inspect_project(project: Project, *, min_dpi: int = 200,
     try:
         # wycinka lub opis arkusza włączone, ale przy obecnych ustawieniach niemożliwe
         for code, notes in (('WYCINKA', gutter_notes(s)), ('OPIS', slug_notes(s)), ('PASEK', strip_notes(s)),
-                            ('ZNACZNIKI_WLASNE', own_marks_notes(s))):
+                            ('ZNACZNIKI_WLASNE', own_marks_notes(s)), ('PASERY_BRUTTO', reg2_notes(s))):
             for note in notes:
                 findings.append(Finding('UWAGA', project.jobs[0].path, 0, code, note))
         # In duplex, an invalid front/back mapping must block export even when
