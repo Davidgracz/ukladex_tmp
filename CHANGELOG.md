@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.5.7
+
+Nowości w ImpoCraft 0.5.7 — generatory kodów (Programy dodatkowe → Kody):
+- **Kody QR**: strona WWW, wizytówka (vCard / MeCard), e-mail, telefon, SMS, Wi-Fi, lokalizacja, wydarzenie,
+  przelew (PL) albo dowolny tekst; korekcja L / M / Q / H.
+- **Kody Data Matrix**: zwykły tekst oraz **numery seryjne** (wzór z {SER}, prefiks, od–do, krok, zera wiodące).
+- **Kody EAN-13 / EAN-8**: teraz także z wpisywania.
+- Treść można wpisać albo wczytać z pliku .txt; kody wektorowe w kolorze CMYK, jeden PDF albo plik na każdy kod.
+
+Details (English):
+
 - Code generators in „Programy dodatkowe → Kody”: QR with content types (website, vCard and MeCard business
   cards, e-mail, phone, SMS, Wi-Fi, location, calendar event, Polish bank transfer, free text), Data Matrix (typed
   text or .txt, and serial numbers ported from the user's old datamt.py generator: {SER} template, prefix,
