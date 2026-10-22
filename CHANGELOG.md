@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.5.2
+
+Nowości w ImpoCraft 0.5.2:
+- **Znaczniki własne z plików PDF (U)** — pliki U1L/U1R (strony nieparzyste) i U2L/U2R (parzyste), położenie H i V,
+  osobne włączniki; prawy przycisk na „Znaczniki własne (U)” → parametry i wczytanie plików.
+- **Kadruj i zapisz do pliku** — w oknie korekty obszaru netto i w menu tabeli stron: nowy PDF przycięty do netto
+  albo do brutto (netto + 3 mm spadu), wektorowo, z korektami z projektu; plik źródłowy bez zmian.
+
+Details (English):
+
 - „Kadruj do obszaru netto / brutto (netto + 3 mm spadu) i zapisz do pliku” in the net-size correction window and in
   the page table menu: writes a new PDF where every page is cut to its TrimBox (or TrimBox + 3 mm), as vectors, with
   the project's page corrections and resizes applied; TrimBox/BleedBox set on the new pages; missing bleed in the
