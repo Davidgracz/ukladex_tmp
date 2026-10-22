@@ -199,3 +199,104 @@ def rotation_for(page: int, current: int, angle: int, even_extra_180: bool = Fal
         raise ValueError('Obrót musi wynosić 0°, 90°, 180° albo 270°')
     extra = 180 if even_extra_180 and page % 2 == 0 else 0
     return (current + angle + extra) % 360
+
+
+# --- Rozetnij strony (kolumny × wiersze, zakładki) i rozkładówki — E1/E2, H-46, H-47 -----------------------
+
+def grid_parts(width: float, height: float, cols: int, rows: int, tab: float = 0.0, tab_left: bool = True,
+               tab_top: bool = True) -> list[dict]:
+    """Części strony w mm (układ widocznej strony, y w dół), kolejno wierszami od lewej górnej.
+
+    Każda część: {'col', 'row' (od 1), 'rect', 'strips': [(prostokąt, (kol., wiersz sąsiada), krawędź)],
+    'joins': [linia styku (x0, y0, x1, y1)]}. Zakładka (E1: „Zakładki na krawędziach”) to pas o szerokości `tab`
+    z treścią sąsiedniej części, dokładany z lewej albo prawej oraz z góry albo z dołu — tylko tam, gdzie jest
+    sąsiad (H-46). Bez zakładek części dokładnie dzielą stronę.
+    """
+    if type(cols) is not int or type(rows) is not int or not (1 <= cols <= 50 and 1 <= rows <= 50):
+        raise ValueError('Ilość części: kolumn i wierszy od 1 do 50')
+    if cols * rows == 1:
+        raise ValueError('Podaj więcej niż jedną część (np. 2 × 1)')
+    if width <= 0 or height <= 0:
+        raise ValueError('Pusta strona')
+    cw, ch = width / cols, height / rows
+    limit = min(([cw] if cols > 1 else []) + ([ch] if rows > 1 else []))
+    if not isinstance(tab, (int, float)) or not 0 <= tab < limit:
+        raise ValueError(f'Zakładka: od 0 do mniej niż wymiar części ({limit:.1f} mm)')
+    parts = []
+    for r in range(rows):
+        for c in range(cols):
+            x0, y0, x1, y1 = c * cw, r * ch, (c + 1) * cw, (r + 1) * ch
+            sides = []
+            if tab and cols > 1:
+                if tab_left and c > 0:
+                    sides.append(('left', (c - 1, r)))
+                elif not tab_left and c < cols - 1:
+                    sides.append(('right', (c + 1, r)))
+            if tab and rows > 1:
+                if tab_top and r > 0:
+                    sides.append(('top', (c, r - 1)))
+                elif not tab_top and r < rows - 1:
+                    sides.append(('bottom', (c, r + 1)))
+            ex0 = x0 - tab if any(s == 'left' for s, _ in sides) else x0
+            ex1 = x1 + tab if any(s == 'right' for s, _ in sides) else x1
+            ey0 = y0 - tab if any(s == 'top' for s, _ in sides) else y0
+            ey1 = y1 + tab if any(s == 'bottom' for s, _ in sides) else y1
+            strips, joins = [], []
+            for side, (nc, nr) in sides:
+                if side == 'left':
+                    strips.append(((ex0, ey0, x0, ey1), (nc + 1, nr + 1), side))
+                    joins.append((x0, ey0, x0, ey1))
+                elif side == 'right':
+                    strips.append(((x1, ey0, ex1, ey1), (nc + 1, nr + 1), side))
+                    joins.append((x1, ey0, x1, ey1))
+                elif side == 'top':
+                    strips.append(((ex0, ey0, ex1, y0), (nc + 1, nr + 1), side))
+                    joins.append((ex0, y0, ex1, y0))
+                else:
+                    strips.append(((ex0, y1, ex1, ey1), (nc + 1, nr + 1), side))
+                    joins.append((ex0, y1, ex1, y1))
+            parts.append({'col': c + 1, 'row': r + 1, 'rect': (ex0, ey0, ex1, ey1), 'strips': strips,
+                          'joins': joins})
+    return parts
+
+
+def join_ticks(join: tuple[float, float, float, float], length: float) -> list[tuple[float, float, float, float]]:
+    """Znacznik zakładki: dwie kreski o długości `length` na linii styku, od obu krawędzi części do środka."""
+    x0, y0, x1, y1 = join
+    if length <= 0:
+        return []
+    if x0 == x1:   # styk pionowy
+        length = min(length, (y1 - y0) / 2)
+        return [(x0, y0, x0, y0 + length), (x0, y1 - length, x0, y1)]
+    length = min(length, (x1 - x0) / 2)
+    return [(x0, y0, x0 + length, y0), (x1 - length, y0, x1, y0)]
+
+
+def spread_halves(trim: tuple[float, float, float, float], media: tuple[float, float, float, float],
+                  page_w: float, page_h: float, tolerance: float = 1.0):
+    """Rozkładówka → dwie strony (H-47). Zwraca None, gdy strona ma już rozmiar pojedynczej strony,
+    albo [(media, trim), (media, trim)] dla lewej i prawej połowy (mm, układ widocznej strony).
+
+    Rozkładówka to TrimBox ≈ 2 × szerokość × wysokość; gdy TrimBox nie jest ustawiony (= cała strona ze spadem),
+    przyjmujemy wyśrodkowany obszar 2 × szer. × wys. Spad z każdej strony bierzemy z pliku; przy grzbiecie
+    spad = mniejszy ze spadów bocznych, z treści sąsiedniej strony rozkładówki.
+    """
+    tx0, ty0, tx1, ty1 = trim
+    mx0, my0, mx1, my1 = media
+    if page_w <= 0 or page_h <= 0:
+        raise ValueError('Rozmiar strony musi być większy od 0')
+    if abs((tx1 - tx0) - page_w) <= tolerance and abs((ty1 - ty0) - page_h) <= tolerance:
+        return None
+    if not (abs((tx1 - tx0) - 2 * page_w) <= tolerance and abs((ty1 - ty0) - page_h) <= tolerance):
+        cx, cy = (tx0 + tx1) / 2, (ty0 + ty1) / 2
+        if 2 * page_w > (mx1 - mx0) + tolerance or page_h > (my1 - my0) + tolerance:
+            raise ValueError(f'Strona {mx1 - mx0:.1f} × {my1 - my0:.1f} mm nie jest rozkładówką '
+                             f'{2 * page_w:g} × {page_h:g} mm')
+        tx0, tx1, ty0, ty1 = cx - page_w, cx + page_w, cy - page_h / 2, cy + page_h / 2
+    left_bleed, right_bleed = max(0.0, tx0 - mx0), max(0.0, mx1 - tx1)
+    top, bottom = max(0.0, ty0 - my0), max(0.0, my1 - ty1)
+    spine = min(left_bleed, right_bleed)
+    mid = (tx0 + tx1) / 2
+    left = ((tx0 - left_bleed, ty0 - top, mid + spine, ty1 + bottom), (tx0, ty0, mid, ty1))
+    right = ((mid - spine, ty0 - top, tx1 + right_bleed, ty1 + bottom), (mid, ty0, tx1, ty1))
+    return [left, right]

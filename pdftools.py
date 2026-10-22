@@ -283,3 +283,145 @@ def shuffle(path: str, output: str, leaves: bool = False) -> list[str]:
     """Tasuj strony albo kartki (P-41)."""
     with _open(path) as doc:
         return [_write(doc, pageops.shuffle_order(len(doc), leaves), Path(output), [path])]
+
+
+def _visible(page, rect) -> fitz.Rect:
+    """Prostokąt z układu MuPDF strony (TrimBox, MediaBox) → układ widocznej strony (po /Rotate)."""
+    origin = fitz.Rect(page.cropbox).tl
+    shown = (fitz.Rect(rect) - (origin.x, origin.y, origin.x, origin.y)) * page.rotation_matrix
+    shown.normalize()
+    return shown
+
+
+def _show_visible(target, doc, index: int, visible_rect):
+    """Wstawia wycinek widocznej strony źródłowej (po /Rotate) na całą stronę `target`, wektorowo.
+
+    PyMuPDF przycina `clip` do widocznego prostokąta strony, choć `clip` jest w układzie nieobróconym — dlatego
+    (jak w engine._place_pdf) na czas wstawiania zdejmujemy obrót strony źródłowej i obracamy wynik.
+    """
+    src = doc[index]
+    angle = src.rotation
+    clip = fitz.Rect(visible_rect) * src.derotation_matrix
+    clip.normalize()
+    if not angle:
+        target.show_pdf_page(target.rect, doc, index, clip=clip, keep_proportion=False)
+        return
+    try:
+        src.set_rotation(0)
+        target.show_pdf_page(target.rect, doc, index, clip=clip, rotate=-angle, keep_proportion=False)
+    finally:
+        src.set_rotation(angle)
+
+
+def split_grid(path: str, output: str, cols: int, rows: int, tab: float = 0.0, tab_left: bool = True,
+               tab_top: bool = True, mark_length: float = 0.0, mark_pt: float = 0.5,
+               color: tuple[float, float, float, float] = (0, 0, 0, 100), describe: bool = False,
+               pages_text: str | None = None) -> list[str]:
+    """„Rozetnij strony pdf” (E1/E2, H-46): każda wybrana strona → kolumny × wiersze nowych stron, wektorowo.
+
+    Zakładka = pas treści sąsiedniej części (z lewej/prawej i z góry/z dołu); znacznik zakładki = kreski
+    na linii styku; opis zakładki = tekst w pasie (który sąsiad). Strony spoza zakresu są kopiowane bez zmian.
+    Kolejność części: wierszami, od lewej górnej.
+    """
+    target = Path(output)
+    _check_target(target, [path])
+    if not 0 <= mark_length <= 100 or not 0.05 <= mark_pt <= 5:
+        raise ValueError('Znacznik zakładki: długość 0–100 mm, grubość 0,05–5 pt')
+    if len(color) != 4 or any(not 0 <= c <= 100 for c in color):
+        raise ValueError('Kolor znacznika: C/M/Y/K w % (0–100)')
+    ink = tuple(c / 100 for c in color)
+    font = fitz.Font('helv')
+    with _open(path) as doc:
+        count = len(doc)
+        chosen = set(pageops.parse_page_ranges(pages_text, count) if pages_text else range(1, count + 1))
+        out = fitz.open()
+        try:
+            for number in range(1, count + 1):
+                src = doc[number - 1]
+                if number not in chosen:
+                    out.insert_pdf(doc, from_page=number - 1, to_page=number - 1)
+                    continue
+                w, h = src.rect.width / MM, src.rect.height / MM
+                for part in pageops.grid_parts(w, h, cols, rows, tab, tab_left, tab_top):
+                    x0, y0, x1, y1 = part['rect']
+                    page = out.new_page(width=(x1 - x0) * MM, height=(y1 - y0) * MM)
+                    shown = fitz.Rect(x0 * MM, y0 * MM, x1 * MM, y1 * MM)
+                    _show_visible(page, doc, number - 1, shown)
+                    for join in part['joins']:
+                        for a, b, c, d in pageops.join_ticks(join, mark_length):
+                            page.draw_line(((a - x0) * MM, (b - y0) * MM), ((c - x0) * MM, (d - y0) * MM),
+                                           color=ink, width=mark_pt)
+                    if describe:
+                        for (sx0, sy0, sx1, sy1), (nc, nr), side in part['strips']:
+                            _strip_label(page, font, ink, (sx0 - x0, sy0 - y0, sx1 - x0, sy1 - y0),
+                                         f'część {part["col"]}×{part["row"]} (kol.×wiersz) — zakładka na część '
+                                         f'{nc}×{nr}', vertical=side in ('left', 'right'))
+            target.parent.mkdir(parents=True, exist_ok=True)
+            out.save(str(target), garbage=3, deflate=True)
+        finally:
+            out.close()
+    return [str(target)]
+
+
+def _strip_label(page, font, ink, strip_mm, text, vertical: bool):
+    """Opis w pasie zakładki: wyśrodkowany, wzdłuż pasa; zmniejszany do 4 pt, inaczej pomijany."""
+    x0, y0, x1, y1 = (v * MM for v in strip_mm)
+    across, along = (x1 - x0, y1 - y0) if vertical else (y1 - y0, x1 - x0)
+    size = min(8.0, across * 0.6)
+    while size >= 4 and font.text_length(text, fontsize=size) > along * 0.9:
+        size -= 0.5
+    if size < 4:
+        return
+    length = font.text_length(text, fontsize=size)
+    writer = fitz.TextWriter(page.rect)
+    if vertical:   # czytany od dołu do góry
+        cx, start = (x0 + x1) / 2 + size * 0.35, (y0 + y1) / 2 + length / 2
+        point = fitz.Point(cx, start)
+        writer.append(point, text, font=font, fontsize=size)
+        writer.write_text(page, color=ink, morph=(point, fitz.Matrix(90)))
+    else:
+        point = fitz.Point((x0 + x1) / 2 - length / 2, (y0 + y1) / 2 + size * 0.35)
+        writer.append(point, text, font=font, fontsize=size)
+        writer.write_text(page, color=ink)
+
+
+def split_spreads(path: str, output: str, page_w: float | None = None, page_h: float | None = None,
+                  split_first: bool = False, split_last: bool = False) -> list[str]:
+    """„Rozetnij rozkładówki” (E1/E2, H-47): każda rozkładówka → lewa i prawa strona z TrimBox i spadami.
+
+    Rozmiar pojedynczej strony podany wprost albo (brak) odczytany z TrimBox pierwszej strony. Pierwsza i ostatnia
+    strona (zwykle okładka) są rozcinane tylko na życzenie; strony o rozmiarze pojedynczej strony — bez zmian.
+    """
+    target = Path(output)
+    _check_target(target, [path])
+    with _open(path) as doc:
+        count = len(doc)
+        if page_w is None or page_h is None:
+            first = _visible(doc[0], doc[0].trimbox)
+            page_w, page_h = first.width / MM, first.height / MM
+        if not (1 <= page_w <= 3000 and 1 <= page_h <= 3000):
+            raise ValueError('Rozmiar strony: 1–3000 mm')
+        out = fitz.open()
+        try:
+            for number in range(1, count + 1):
+                src = doc[number - 1]
+                keep = (number == 1 and not split_first) or (number == count and count > 1 and not split_last)
+                trim = _visible(src, src.trimbox)
+                media = _visible(src, fitz.Rect(src.mediabox) & fitz.Rect(src.cropbox))
+                halves = None if keep else pageops.spread_halves(
+                    tuple(v / MM for v in trim), tuple(v / MM for v in media), page_w, page_h)
+                if halves is None:
+                    out.insert_pdf(doc, from_page=number - 1, to_page=number - 1)
+                    continue
+                for box, inner in halves:
+                    box_pt = fitz.Rect(*(v * MM for v in box))
+                    page = out.new_page(width=box_pt.width, height=box_pt.height)
+                    _show_visible(page, doc, number - 1, box_pt)
+                    tx0, ty0, tx1, ty1 = ((v - o) * MM for v, o in zip(inner, (box[0], box[1], box[0], box[1])))
+                    page.set_trimbox(fitz.Rect(tx0, ty0, tx1, ty1) & page.rect)
+                    page.set_bleedbox(page.rect)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            out.save(str(target), garbage=3, deflate=True)
+        finally:
+            out.close()
+    return [str(target)]
