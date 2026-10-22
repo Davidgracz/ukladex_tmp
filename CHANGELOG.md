@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Use frame (A) on the marks bar, requested by the user: a thin frame around every placed use, on the net
+  (trim) edge and/or the gross (bleed) edge, width [pt] and colour (black / K 100 % / registration); default
+  0.25 pt K 100 %, off by default. H-50.
+
 ## 0.5.4
 
 Nowości w ImpoCraft 0.5.4:
