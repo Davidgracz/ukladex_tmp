@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fix: the bottom bar with „Sprawdź aktualizacje” disappeared — the marks bar had grown to 11 buttons in one column,
+  the window needed ~1150 px and the bottom bar was squeezed to 1 px. The bottom bar is now packed before the
+  middle of the window and the marks are laid out in two columns (required height ~830 px). Regression test added.
+
 - Use frame (A) on the marks bar, requested by the user: a thin frame around every placed use, on the net
   (trim) edge and/or the gross (bleed) edge, width [pt] and colour (black / K 100 % / registration); default
   0.25 pt K 100 %, off by default. H-50.
