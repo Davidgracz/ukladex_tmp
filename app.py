@@ -416,7 +416,8 @@ class App(tk.Tk):
         self._create_marks_strip(body)
 
         bottom = ttk.Frame(self.imposition_tab, padding=(8, 3))
-        bottom.pack(fill='x')
+        # Pasek stanu rezerwuje miejsce przed środkiem okna — inaczej przy wysokim środku znika (np. na laptopie).
+        bottom.pack(fill='x', side='bottom', before=body)
         ttk.Label(bottom, text=f'{app_info.TITLE} · {app_info.COPYRIGHT}', foreground=MUTED).pack(side='left')
         self.update_text = tk.StringVar(value='')
         self.updates = UpdateChecker(self, self.update_text)
@@ -729,11 +730,15 @@ class App(tk.Tk):
                                       ('numbers', 'Numery\nstron', self.labels_var, None)):
             button = ttk.Checkbutton(marks, text=text, image=self._icon(icon), compound='top', variable=var,
                                      style='Tool.Toolbutton', width=9, command=self.schedule_refresh)
-            button.pack(fill='x', pady=1)
+            index = len(marks.grid_slaves())
+            button.grid(row=index // 2, column=index % 2, sticky='ew', padx=1, pady=1)  # dwie kolumny — niższy pasek
             if kind:
                 button.bind('<Button-3>', lambda e, k=kind: self.open_mark_settings(k))
-        ttk.Button(marks, text='Wyłącz\nwszystkie', command=self.marks_all_off).pack(fill='x', pady=(6, 1))
-        ttk.Label(marks, text='PPM = parametry', style='Muted.TLabel').pack(pady=(4, 0))
+        rows = (len(marks.grid_slaves()) + 1) // 2
+        ttk.Button(marks, text='Wyłącz\nwszystkie', command=self.marks_all_off).grid(
+            row=rows, column=0, columnspan=2, sticky='ew', pady=(6, 1))
+        ttk.Label(marks, text='PPM = parametry', style='Muted.TLabel').grid(row=rows + 1, column=0, columnspan=2,
+                                                                          pady=(4, 0))
 
     # --- Synchronizacja „Rodzaj arkuszy” ↔ tryb/odwracanie -----------------------------------------
 
