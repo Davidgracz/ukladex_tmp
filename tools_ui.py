@@ -11,6 +11,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 import barcodes
+import marks
 import pdftools
 
 PANEL = '#ffffff'
@@ -33,7 +34,7 @@ class Tool:
     many_inputs: bool = False
     text_input: bool = False
     # Dodatkowe pola: (klucz, etykieta, wartość domyślna, rodzaj) — rodzaj 'quad' = 4 pola L/P/G/D,
-    # 'opt' = liczba albo puste, 'size' = „szer. × wys.” albo puste.
+    # 'opt' = liczba albo puste, 'size' = „szer. × wys.” albo puste, 'text' = dowolny tekst (np. kolor C/M/Y/K).
     fields: tuple[tuple[str, str, str, str], ...] = ()
 
 
@@ -68,6 +69,22 @@ TOOLS = (
          fields=(('width', 'Szerokość [mm lub %]', '105', 'opt'),
                  ('height', 'Wysokość [mm lub %]', '', 'opt'),
                  ('page', 'Wyśrodkuj na stronie szer. × wys. [mm] (puste = jak po przeskalowaniu)', '', 'size'))),
+    Tool('Rozetnij strony PDF',
+         'Każda strona → kolumny × wiersze nowych stron (np. plakat na kafle), wektorowo. Zakładka = pas treści '
+         'sąsiedniej części do sklejenia; znacznik = kreski na linii styku. Strony spoza zakresu bez zmian.',
+         'file', '--rozciete', range_field='optional',
+         options=('Zakładki z prawej (domyślnie z lewej)', 'Zakładki u dołu (domyślnie u góry)',
+                  'Dodaj opis zakładek'),
+         fields=(('grid', 'Ilość części: kolumn × wierszy', '2 x 2', 'size'),
+                 ('tab', 'Zakładka [mm] (0 = bez zakładek)', '0', 'opt'),
+                 ('mark', 'Długość znacznika zakładki [mm] (0 = bez)', '5', 'opt'),
+                 ('mark_pt', 'Grubość znacznika [pt]', '0.5', 'opt'),
+                 ('color', 'Kolor znacznika i opisu C/M/Y/K [%]', '0/0/0/100', 'text'))),
+    Tool('Rozetnij rozkładówki',
+         'Każda rozkładówka → lewa i prawa strona z TrimBox i spadami (spad przy grzbiecie z treści sąsiedniej '
+         'strony). Strony o rozmiarze pojedynczej strony zostają bez zmian.',
+         'file', '--strony', options=('Rozcinaj pierwszą stronę', 'Rozcinaj ostatnią stronę'),
+         fields=(('page', 'Rozmiar strony szer. × wys. [mm] (puste = TrimBox pierwszej strony)', '', 'size'),)),
     Tool('Kody EAN-13 / EAN-8 z pliku tekstowego',
          'Jeden kod w wierszu (EAN-13: 12/13 cyfr, EAN-8: 7/8). Każdy kod na osobnej stronie, wektorowo.',
          'file', '--EAN', options=('EAN-8 zamiast EAN-13',), text_input=True),
@@ -118,7 +135,7 @@ class PdfToolsFrame(ttk.Frame):
         self.number_label.pack(side='left')
         self.number_var = tk.StringVar(value='2')
         ttk.Entry(self.number_frame, textvariable=self.number_var, width=8).pack(side='left', padx=6)
-        self.option_vars = [tk.BooleanVar(), tk.BooleanVar()]
+        self.option_vars = [tk.BooleanVar() for _ in range(3)]
         self.option_buttons = [ttk.Checkbutton(form, variable=v) for v in self.option_vars]
         self.form = form
         self.fields_frame = ttk.Frame(form)
@@ -255,6 +272,18 @@ class PdfToolsFrame(ttk.Frame):
             # pola liczbowe sprawdzamy przed wyborem pliku wynikowego
             if tool.name == 'Dodaj spady':
                 bleed_args = tuple(tuple(self._field_numbers(k)) for k in ('bleed', 'strip', 'offset'))
+            if tool.name == 'Rozetnij strony PDF':
+                grid = self._field_size('grid')
+                if grid is None or any(v != int(v) for v in grid):
+                    raise ValueError('Ilość części wpisz jako kolumny x wiersze, np. 2 x 3.')
+                color = marks.parse_cmyk(self.field_vars['color'][0].get())
+                if color is None:
+                    raise ValueError('Kolor znacznika: C/M/Y/K w %, np. 0/0/0/100.')
+                split_args = dict(cols=int(grid[0]), rows=int(grid[1]), tab=self._field_optional('tab') or 0.0,
+                                  mark_length=self._field_optional('mark') or 0.0,
+                                  mark_pt=self._field_optional('mark_pt') or 0.5, color=color)
+            if tool.name == 'Rozetnij rozkładówki':
+                spread_size = self._field_size('page')
             if tool.name == 'Skaluj strony':
                 scale_args = (self._field_optional('width'), self._field_optional('height'), self._field_size('page'))
                 if scale_args[0] is None and scale_args[1] is None:
@@ -291,6 +320,12 @@ class PdfToolsFrame(ttk.Frame):
                 written = pdftools.shuffle(first, target, leaves=opt[0])
             elif name == 'Dodaj spady':
                 written = pdftools.add_bleed(first, target, *bleed_args, over_page=not opt[0], pages_text=pages)
+            elif name == 'Rozetnij strony PDF':
+                written = pdftools.split_grid(first, target, tab_left=not opt[0], tab_top=not opt[1], describe=opt[2],
+                                              pages_text=pages, **split_args)
+            elif name == 'Rozetnij rozkładówki':
+                width, height = spread_size or (None, None)
+                written = pdftools.split_spreads(first, target, width, height, split_first=opt[0], split_last=opt[1])
             elif name == 'Skaluj strony':
                 width, height, page = scale_args
                 written = pdftools.scale_pages(first, target, width, height, percent=opt[0],

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Extra programs „Rozetnij strony PDF” (columns × rows, page range, overlap tabs left/right and top/bottom,
+  tab marks with length, width and CMYK colour, optional tab labels) and „Rozetnij rozkładówki” (single page
+  size given or read from the first page TrimBox, optional splitting of the first/last page, TrimBox and bleed
+  on the new pages, spine bleed from the neighbouring page). Vector output; rotated source pages are cut in
+  their visible orientation. H-46, H-47.
+
 - Page table row operations from the original's menu (submenu „Wiersze”): insert vacancy before / after /
   here, remove all vacancies, insert file before / after, replace a row with a page of another file or of the
   same file, copy / cut / paste before / after (Ctrl+C / X / V), select rows included / excluded / the same.
