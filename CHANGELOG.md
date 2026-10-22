@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.5.6
+
+Nowości w ImpoCraft 0.5.6:
+- **Nowe menu „Programy dodatkowe”**: kafelki z ikonami w kategoriach (dziel i łącz, wybierz i usuń strony,
+  kolejność i obrót, format / spady / cięcie, kody) oraz nagłówek z opisem wybranego narzędzia.
+- **Usuń wybrane strony**: nowy plik PDF bez wskazanych stron (np. 2, 5-7, 10-); plik źródłowy bez zmian.
+
+Details (English):
+
 - „Programy dodatkowe” redesigned: tiles with drawn icons in categories (split and merge, choose and delete pages,
   order and rotation, format/bleed/cutting, codes), two columns; the selected tool gets a header with a large
   icon, name and description.
