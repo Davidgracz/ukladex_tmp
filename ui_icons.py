@@ -65,6 +65,9 @@ def draw(name, size=30):
     elif name == 'edit':
         d.rectangle((3*u, 6*u, 21*u, 27*u), fill=PAPER, outline=DARK, width=SCALE*2)
         d.polygon([(25*u, 3*u), (28*u, 6*u), (14*u, 20*u), (10*u, 21*u), (11*u, 17*u)], fill=INK)
+    elif name == 'frame':  # cztery użytki, każdy w cienkiej czarnej ramce
+        for x0, y0 in ((3, 5), (16, 5), (3, 17), (16, 17)):
+            d.rectangle((x0*u, y0*u, (x0 + 11)*u, (y0 + 9)*u), fill=BACK, outline=INK, width=SCALE)
     elif name == 'register':
         d.ellipse((3*u, 5*u, 20*u, 22*u), outline=DARK, width=SCALE*2)
         d.ellipse((10*u, 8*u, 27*u, 25*u), outline=INK, width=SCALE*2)

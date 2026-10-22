@@ -44,12 +44,14 @@ MARK_PARAMS = ('mark_offset', 'mark_length', 'mark_width_pt',
                'strip_offset', 'strip_centered', 'strip_trim', 'strip_colors', 'strip_pdf',
                'own_folder', 'own_1l', 'own_1r', 'own_2l', 'own_2r', 'own_h1', 'own_v1', 'own_h2', 'own_v2',
                'reg2_v1', 'reg2_v2', 'reg2_h1', 'reg2_h2', 'reg2_pt', 'reg2_color',
-               'fill_pages', 'fill_corner', 'fill_columns', 'fill_stack', 'fill_repeat', 'fill_even_last')
+               'fill_pages', 'fill_corner', 'fill_columns', 'fill_stack', 'fill_repeat', 'fill_even_last',
+               'frame_net', 'frame_gross', 'frame_pt', 'frame_color')
 MARK_CHOICES = {'gross_mark_pages': ('Wszystkie', 'Nieparzyste', 'Parzyste'), 'reg_variant': (1, 2),
                 'slug_size': (10, 12, 14), 'slug_font': ('Arial', 'Courier'),
                 'mark_pages': ('Wszystkie', 'Nieparzyste', 'Parzyste'),
                 'mark_color': ('Czarny (dotychczasowy)', 'K 100 %', 'Rejestracyjny (100 % CMYK)'),
-                'reg2_color': ('Czarny (dotychczasowy)', 'K 100 %', 'Rejestracyjny (100 % CMYK)')}
+                'reg2_color': ('Czarny (dotychczasowy)', 'K 100 %', 'Rejestracyjny (100 % CMYK)'),
+                'frame_color': ('Czarny (dotychczasowy)', 'K 100 %', 'Rejestracyjny (100 % CMYK)')}
 MARK_DIALOGS = {
     'strip': ('Pasek kontroli koloru', (
         ('strip_top', 'Rysuj pasek na górze arkusza'),
@@ -115,6 +117,11 @@ MARK_DIALOGS = {
         ('gutter_marks', 'Rysuj znacznik w osi wycinki'),
         ('gutter_mark_length', 'Długość znacznika [mm] (0 = przez całe pole zadruku)'),
         ('gutter_mark_pt', 'Grubość znacznika [pt]'))),
+    'frame': ('Ramka dookoła każdego użytku', (
+        ('frame_net', 'Ramka na krawędzi netto (linia cięcia)'),
+        ('frame_gross', 'Ramka na krawędzi brutto (netto + spad)'),
+        ('frame_pt', 'Grubość [pt]'),
+        ('frame_color', 'Kolor'))),
     'reg2': ('Pasery w polu brutto', (
         ('reg2_v1', 'V1 — długość kreski pionowej nad użytkami [mm]'),
         ('reg2_v2', 'V2 — dalsza część kreski pionowej, wzdłuż użytku [mm]'),
@@ -343,6 +350,7 @@ class App(tk.Tk):
         self.strip_var = tk.BooleanVar(value=False)
         self.own_var = tk.BooleanVar(value=False)
         self.reg2_var = tk.BooleanVar(value=False)
+        self.frame_var = tk.BooleanVar(value=False)
         defaults = Settings()
         self.mark_params = {key: getattr(defaults, key) for key in MARK_PARAMS}
         self.status_text = tk.StringVar(value='')
@@ -426,7 +434,7 @@ class App(tk.Tk):
         # Skróty jak w Impozycjonerze 4: Ctrl+N nowa impozycja, Ctrl+W wczytaj projekt, Shift+Ctrl+S zapisz jako.
         for key, var in (('n', self.marks_var), ('w', self.gutter_var), ('t', self.trimcrop_var),
                          ('b', self.gross_var), ('p', self.reg_var), ('o', self.slug_var),
-                         ('k', self.strip_var), ('u', self.own_var), ('s', self.reg2_var)):
+                         ('k', self.strip_var), ('u', self.own_var), ('s', self.reg2_var), ('a', self.frame_var)):
             self.bind(f'<KeyPress-{key}>', lambda e, v=var: self._mark_shortcut(e, v))
             self.bind(f'<KeyPress-{key.upper()}>', lambda e, v=var: self._mark_shortcut(e, v))
         self.bind('<Control-n>', lambda e: self.new_project())
@@ -714,6 +722,7 @@ class App(tk.Tk):
                                       ('gross', 'Brutto\n(B)', self.gross_var, 'gross'),
                                       ('register', 'Pasery\n(P)', self.reg_var, 'register'),
                                       ('reg2', 'Pasery\nbrutto (S)', self.reg2_var, 'reg2'),
+                                      ('frame', 'Ramka\nużytku (A)', self.frame_var, 'frame'),
                                       ('slug', 'Opis\narkusza (O)', self.slug_var, 'slug'),
                                       ('strip', 'Pasek\nkontrolny (K)', self.strip_var, 'strip'),
                                       ('own', 'Znaczniki\nwłasne (U)', self.own_var, 'own'),
@@ -1011,6 +1020,7 @@ class App(tk.Tk):
         self.own_var.set(s.own_marks)
         self.output_files_var.set(s.output_files)
         self.reg2_var.set(s.reg2_on)
+        self.frame_var.set(s.frame_on)
         self.white_trim_var.set(s.white_trim)
         self.auto_orient_var.set(s.auto_orient)
         self.mark_params = {key: getattr(s, key) for key in MARK_PARAMS}
@@ -1087,6 +1097,7 @@ class App(tk.Tk):
                         own_marks=self.own_var.get(),
                         output_files=self.output_files_var.get(),
                         reg2_on=self.reg2_var.get(),
+                        frame_on=self.frame_var.get(),
                         white_trim=self.white_trim_var.get(), auto_orient=self.auto_orient_var.get(),
                         **self.mark_params)
 
@@ -1703,7 +1714,7 @@ class App(tk.Tk):
 
     def marks_all_off(self):
         for var in (self.marks_var, self.gutter_var, self.trimcrop_var, self.gross_var, self.reg_var,
-                    self.slug_var, self.strip_var, self.own_var, self.reg2_var, self.labels_var):
+                    self.slug_var, self.strip_var, self.own_var, self.reg2_var, self.frame_var, self.labels_var):
             var.set(False)
         self.schedule_refresh()
 

@@ -193,6 +193,12 @@ class Settings:
     reg2_color: str = 'Rejestracyjny (100 % CMYK)'   # zob. marks.MARK_COLORS
     # Łączenie plików wynikowych (naming.OUTPUT_MODES, H-48): domyślnie jeden plik, jak dotąd.
     output_files: str = 'Jeden plik'
+    # Ramka dookoła każdego użytku (A) — na życzenie użytkownika (H-50); w Imp4 tylko w programie do banerów.
+    frame_on: bool = False
+    frame_net: bool = True        # ramka na krawędzi netto (linia cięcia)
+    frame_gross: bool = False     # ramka na krawędzi brutto (netto + spad)
+    frame_pt: float = 0.25
+    frame_color: str = 'K 100 %'  # zob. marks.MARK_COLORS
     # Autowypełnianie arkusza (autofill.py, H-49) — wartości domyślne = dotychczasowe wypełnianie.
     fill_pages: str = 'Wszystkimi'
     fill_corner: str = 'LG'
@@ -373,6 +379,12 @@ def validate(settings: Settings):
         raise ValueError('Pasery w polu brutto, grubość [pt]: dozwolone 0,05–5')
     if settings.reg2_color not in marks_rules.MARK_COLORS:
         raise ValueError(f'Kolor paserów w polu brutto: {", ".join(marks_rules.MARK_COLORS)}')
+    if settings.frame_color not in marks_rules.MARK_COLORS:
+        raise ValueError(f'Kolor ramki użytku: {", ".join(marks_rules.MARK_COLORS)}')
+    if type(settings.frame_pt) not in (int, float) or not isfinite(settings.frame_pt) or not 0.05 <= settings.frame_pt <= 5:
+        raise ValueError('Ramka użytku, grubość [pt]: dozwolone 0,05–5')
+    if settings.frame_on and not (settings.frame_net or settings.frame_gross):
+        raise ValueError('Ramka użytku: wybierz ramkę netto, brutto albo obie')
     import naming
     naming.output_parts(settings.output_files)
     import autofill
@@ -1335,6 +1347,8 @@ def render_side(side: SheetSide, sources: dict[str, fitz.Document], s: Settings,
             _place_pdf(target, item.source, item.slot, s, sources, offsets)
         if marks_here and item.source is not None:
             _draw_marks(target, item.slot, s, blockers)
+        if s.frame_on and item.source is not None:
+            draw_use_frame(target, item.slot, s)
         if s.show_page_labels:
             txt = f'{item.source.index+1}  ' if item.source else 'PUSTA  '
             target.insert_text((pt(item.slot.x+1), pt(item.slot.y+item.slot.h-1)),
@@ -1344,6 +1358,19 @@ def render_side(side: SheetSide, sources: dict[str, fitz.Document], s: Settings,
     draw_sheet_marks(target, side, s, output_name=output_name)
     draw_own_marks(target, s, page_number or target.number + 1)
     return out
+
+
+def draw_use_frame(target: fitz.Page, slot: Slot, s: Settings):
+    """Cienka ramka dookoła użytku: na krawędzi netto i/lub brutto, nad grafiką (H-50)."""
+    color = marks_rules.MARK_COLORS[s.frame_color]
+    rects = []
+    if s.frame_net:
+        rects.append((slot.x, slot.y, slot.x + slot.w, slot.y + slot.h))
+    b = bleed_for(s)
+    if s.frame_gross and b > 0:
+        rects.append((slot.x - b, slot.y - b, slot.x + slot.w + b, slot.y + slot.h + b))
+    for x0, y0, x1, y1 in rects:
+        target.draw_rect(fitz.Rect(pt(x0), pt(y0), pt(x1), pt(y1)), color=color, fill=None, width=s.frame_pt)
 
 
 REGISTRATION = (1, 1, 1, 1)   # 100 % wszystkich farb CMYK (H-30)
