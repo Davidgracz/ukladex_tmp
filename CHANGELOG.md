@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.5.8
+
+Nowości i poprawki w ImpoCraft 0.5.8:
+- **Ważna poprawka:** strona obrócona w samym pliku PDF (/Rotate) trafiała na arkusz odwrócona o 180° względem
+  podglądu w czytniku PDF. Teraz wygląda tak jak w czytniku. Strony bez takiego obrotu — bez zmian.
+- **Spady L / P / G / D** (wstęga „Montaż akcydensów” → „Spady (dla obrotu 0°)”): wyłącz „=” i wpisz osobno spad
+  lewy, prawy, górny i dolny; spady obracają się razem z użytkiem.
+- Węższa grupa spadów na wstędze — mieści się w mniejszym oknie.
+
+Details (English):
+
 - Separate bleeds L / P / G / D „for rotation 0°” as in the original: „=” switch and four fields in the ribbon
   group „Spady (dla obrotu 0°)”; bleeds rotate with the use; grid cells, gross rectangles, cut marks, artwork
   clipping, single-page export and preflight use the bleed of each edge; preflight note for duplex when the
