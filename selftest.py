@@ -49,7 +49,16 @@ def _checks(folder: Path) -> list[str]:
     done.append(f'kody QR {len(qr)}×{len(qr)} i Data Matrix {len(dm)}×{len(dm)}')
 
     import app
-    window = app.App()
+    import time
+    import tkinter
+    for attempt in range(3):   # chwilowa blokada pliku tk.tcl (np. skaner antywirusowy podczas budowania)
+        try:
+            window = app.App()
+            break
+        except tkinter.TclError as exc:
+            if 'usable' not in str(exc) or attempt == 2:
+                raise
+            time.sleep(0.5)
     window.update()
     window.destroy()
     done.append('okno programu')

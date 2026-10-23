@@ -11,7 +11,7 @@ import json
 
 import pymupdf as fitz
 
-from engine import Job, Project, Settings, mm, media_rect, open_sources, scaling_layout, validate, bleed_for, gross_dimensions, validate_job_roles, _duplex_pairs, project_sides, overlapping_uses, plan_sides, crop_offsets, crop_centre, ROLE_AUTO, ROLE_SKIP, economic_report, gutter_notes, FILL_GROSS, slug_notes, strip_notes, orientation_differs, own_marks_notes, reg2_notes
+from engine import Job, Project, Settings, mm, media_rect, open_sources, scaling_layout, validate, bleed_for, gross_dimensions, validate_job_roles, _duplex_pairs, project_sides, overlapping_uses, plan_sides, crop_offsets, crop_centre, ROLE_AUTO, ROLE_SKIP, economic_report, gutter_notes, FILL_GROSS, slug_notes, strip_notes, orientation_differs, own_marks_notes, reg2_notes, bleeds, max_bleed, bleed_duplex_notes
 
 
 @dataclass(frozen=True)
@@ -147,7 +147,8 @@ def inspect_project(project: Project, *, min_dpi: int = 200,
     try:
         # wycinka lub opis arkusza włączone, ale przy obecnych ustawieniach niemożliwe
         for code, notes in (('WYCINKA', gutter_notes(s)), ('OPIS', slug_notes(s)), ('PASEK', strip_notes(s)),
-                            ('ZNACZNIKI_WLASNE', own_marks_notes(s)), ('PASERY_BRUTTO', reg2_notes(s))):
+                            ('ZNACZNIKI_WLASNE', own_marks_notes(s)), ('PASERY_BRUTTO', reg2_notes(s)),
+                            ('SPADY', bleed_duplex_notes(s))):
             for note in notes:
                 findings.append(Finding('UWAGA', project.jobs[0].path, 0, code, note))
         # In duplex, an invalid front/back mapping must block export even when
@@ -222,7 +223,8 @@ def inspect_project(project: Project, *, min_dpi: int = 200,
                         label('INFO', 'KADROWANIE',
                               f'Kadrowanie 1:1 (X={offsets.get(path,(0,0))[0]:+.1f}, Y={offsets.get(path,(0,0))[1]:+.1f} mm): z oryginału {width:.2f} × {height:.2f} mm '
                               f'pozostanie użytek {gross_dimensions(s)[0]:g} × {gross_dimensions(s)[1]:g} mm, netto {s.trim_w:g} × {s.trim_h:g} mm, '
-                              f'z dodatkowym spadem {bleed_for(s):g} mm na stronę.')
+                              + (f'z dodatkowym spadem {bleed_for(s):g} mm na stronę.' if s.bleed_equal else
+                                 'ze spadami L/P/G/D ' + '/'.join(f'{v:g}' for v in bleeds(s)) + ' mm.'))
                     factor, dx, dy = 1.0, (s.trim_w-width)/2, (s.trim_h-height)/2
                 else:
                     if s.white_trim:
@@ -241,7 +243,7 @@ def inspect_project(project: Project, *, min_dpi: int = 200,
                               f'użytek {s.trim_w:g} × {s.trim_h:g} mm — zostanie obrócona o 90°.')
                         width, height = height, width
                     if s.scale_mode == FILL_GROSS:
-                        gw, gh = s.trim_w + 2*bleed_for(s), s.trim_h + 2*bleed_for(s)
+                        gw, gh = gross_dimensions(s)
                         factor, dx, dy = scaling_layout(width, height, gw, gh, s.scale_mode)
                     else:
                         factor, dx, dy = scaling_layout(width, height, s.trim_w, s.trim_h,
@@ -264,12 +266,12 @@ def inspect_project(project: Project, *, min_dpi: int = 200,
                     distances = ((width-s.trim_w)/2, (height-s.trim_h)/2,
                                  (width-s.trim_w)/2, (height-s.trim_h)/2)
                 if s.scale_mode == FILL_GROSS:
-                    label('INFO', 'SPAD', f'Spad {bleed_for(s):g} mm powstaje z grafiki (Wypełnij ze spadem).')
-                elif bleed_for(s) > 0 and min(distances)*factor < bleed_for(s) - .15:
+                    label('INFO', 'SPAD', f'Spad {max_bleed(s):g} mm powstaje z grafiki (Wypełnij ze spadem).')
+                elif max_bleed(s) > 0 and min(distances)*factor < max_bleed(s) - .15:
                     label('UWAGA', 'SPAD',
                           'Dostępny obszar poza TrimBox (lewo/góra/prawo/dół): '
                           + '/'.join(f'{max(0,v*factor):.2f}' for v in distances) +
-                          f' mm po skalowaniu; wymagany spad: {bleed_for(s):g} mm. Brakujący obszar pozostanie biały.')
+                          f' mm po skalowaniu; wymagany spad: {max_bleed(s):g} mm. Brakujący obszar pozostanie biały.')
                 if page.rotation:
                     label('INFO', 'ROTACJA', f'Źródłowe /Rotate = {page.rotation}°.')
                 try:

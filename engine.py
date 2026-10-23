@@ -199,6 +199,12 @@ class Settings:
     frame_gross: bool = False     # ramka na krawędzi brutto (netto + spad)
     frame_pt: float = 0.25
     frame_color: str = 'K 100 %'  # zob. marks.MARK_COLORS
+    # Spady osobno L / P / G / D „dla obrotu 0°” (E1, H-53); domyślnie równe = dotychczasowy jeden spad.
+    bleed_equal: bool = True
+    bleed_l: float = 0.0
+    bleed_r: float = 0.0
+    bleed_t: float = 0.0
+    bleed_b: float = 0.0
     # Autowypełnianie arkusza (autofill.py, H-49) — wartości domyślne = dotychczasowe wypełnianie.
     fill_pages: str = 'Wszystkimi'
     fill_corner: str = 'LG'
@@ -267,7 +273,10 @@ class Geometry:
 
 
 def gross_dimensions(s: Settings) -> tuple[float, float]:
-    """Physical size of a single imposed use, including symmetric bleed."""
+    """Physical size of a single imposed use, including bleed (for page rotation 0°)."""
+    if not s.bleed_equal:
+        l, r, t, b = bleeds(s)
+        return s.trim_w + l + r, s.trim_h + t + b
     if s.scale_mode == 'Kadruj 1:1' and s.auto_gross:
         return s.trim_w + 2*s.bleed, s.trim_h + 2*s.bleed
     if s.scale_mode == 'Kadruj 1:1' and s.gross_w > 0 and s.gross_h > 0:
@@ -282,6 +291,34 @@ def bleed_for(s: Settings) -> float:
     if s.scale_mode == 'Kadruj 1:1' and s.gross_w > 0 and s.gross_h > 0:
         return (s.gross_w-s.trim_w)/2
     return s.bleed
+
+
+def bleeds(s: Settings) -> tuple[float, float, float, float]:
+    """Spady (lewy, prawy, górny, dolny) strony dla obrotu 0° (E1); przy „=” — cztery razy ten sam spad."""
+    if s.bleed_equal:
+        b = bleed_for(s)
+        return (b, b, b, b)
+    return (s.bleed_l, s.bleed_r, s.bleed_t, s.bleed_b)
+
+
+def max_bleed(s: Settings) -> float:
+    return max(bleeds(s))
+
+
+def slot_bleeds(s: Settings, slot) -> tuple[float, float, float, float]:
+    """Spady pola na arkuszu (lewy, prawy, górny, dolny) — obrócone razem z użytkiem (H-53)."""
+    return marks_rules.rotate_bleeds(bleeds(s), slot.rotation)
+
+
+def _span(a: float, b: float) -> float:
+    """a + b; przy równych spadach dokładnie 2·a, jak w dotychczasowym rachunku (bez różnic zaokrągleń)."""
+    return 2 * a if a == b else a + b
+
+
+def gross_rect(s: Settings, slot) -> tuple[float, float, float, float]:
+    """Prostokąt brutto pola (netto + spady z każdej strony) w mm."""
+    l, r, t, b = slot_bleeds(s, slot)
+    return (slot.x - l, slot.y - t, slot.x + slot.w + r, slot.y + slot.h + b)
 
 
 def validate(settings: Settings):
@@ -385,6 +422,15 @@ def validate(settings: Settings):
         raise ValueError('Ramka użytku, grubość [pt]: dozwolone 0,05–5')
     if settings.frame_on and not (settings.frame_net or settings.frame_gross):
         raise ValueError('Ramka użytku: wybierz ramkę netto, brutto albo obie')
+    if not settings.bleed_equal:
+        for key, label in (('bleed_l', 'lewy'), ('bleed_r', 'prawy'), ('bleed_t', 'górny'), ('bleed_b', 'dolny')):
+            value = getattr(settings, key)
+            if type(value) not in (int, float) or not isfinite(value) or not 0 <= value <= 50:
+                raise ValueError(f'Spad {label} [mm]: dozwolone 0–50')
+        if settings.scale_mode == 'Kadruj 1:1' and not settings.auto_gross:
+            raise ValueError('Różne spady L/P/G/D: włącz „brutto = netto + spady” (brutto wynika wtedy ze spadów).')
+        if settings.mode == 'Broszura':
+            raise ValueError('Różne spady L/P/G/D nie dotyczą broszury — włącz spady równe („=”).')
     import naming
     naming.output_parts(settings.output_files)
     import autofill
@@ -443,7 +489,8 @@ def geometry(s: Settings) -> Geometry:
     candidates = []
     for angle in ([0, 90] if s.rotation == 'Auto' else [int(s.rotation)]):
         w, h = (s.trim_w, s.trim_h) if angle in (0, 180) else (s.trim_h, s.trim_w)
-        cell_w, cell_h = w + 2*bleed_for(s), h + 2*bleed_for(s)
+        bl, br, bt, bb = marks_rules.rotate_bleeds(bleeds(s), angle)
+        cell_w, cell_h = w + _span(bl, br), h + _span(bt, bb)
         on = s.gutter_on
         if on and (s.gutter_v or s.gutter_h):
             auto_cols = marks_rules.auto_count(available_w, cell_w, s.gap_x, s.gutter_v, on)
@@ -460,8 +507,8 @@ def geometry(s: Settings) -> Geometry:
         slots = []
         grid_x = s.margin_x + (available_w-used_w)/2
         grid_y = s.margin_y + (available_h-used_h)/2
-        left = grid_x + bleed_for(s)
-        top = grid_y + bleed_for(s)
+        left = grid_x + bl
+        top = grid_y + bt
         xs = marks_rules.axis_offsets(cols, cell_w, s.gap_x, s.gutter_v, on)
         ys = marks_rules.axis_offsets(rows, cell_h, s.gap_y, s.gutter_h, on)
         for row in range(rows):
@@ -857,9 +904,9 @@ def _slot_from_edit(base: Slot, entry: dict, settings: Settings) -> Slot:
     w, h = (base.h, base.w) if angle in (90, 270) else (base.w, base.h)
     x = base.x + (base.w - w) / 2 + dx
     y = base.y + (base.h - h) / 2 + dy
-    bleed = bleed_for(settings)
-    if x < bleed - 1e-5 or y < bleed - 1e-5 or (x+w+bleed > settings.sheet_w+1e-5
-            or y+h+bleed > settings.sheet_h+1e-5):
+    bl, br, bt, bb = marks_rules.rotate_bleeds(bleeds(settings), (base.rotation + angle) % 360)
+    if x < bl - 1e-5 or y < bt - 1e-5 or (x+w+br > settings.sheet_w+1e-5
+            or y+h+bb > settings.sheet_h+1e-5):
         raise ValueError('Użytek ze spadami wychodzi poza arkusz. Zmniejsz przesunięcie lub obrót.')
     return Slot(x, y, w, h, (base.rotation + angle) % 360, base.col, base.row)
 
@@ -941,9 +988,10 @@ def calibrate_verso(side: SheetSide, s: Settings) -> SheetSide:
         slot = p.slot
         shifted = Slot(slot.x + x, slot.y + y, slot.w, slot.h,
                        slot.rotation, slot.col, slot.row)
-        if p.source is not None and (shifted.x-b < -1e-5 or shifted.y-b < -1e-5 or
-                shifted.x+shifted.w+b > s.sheet_w+1e-5 or
-                shifted.y+shifted.h+b > s.sheet_h+1e-5):
+        gx0, gy0, gx1, gy1 = gross_rect(s, shifted)
+        if p.source is not None and (gx0 < -1e-5 or gy0 < -1e-5 or
+                gx1 > s.sheet_w+1e-5 or
+                gy1 > s.sheet_h+1e-5):
             raise ValueError('Kalibracja verso przesuwa użytek ze spadami poza arkusz. Zmniejsz offset X/Y.')
         items.append(Placement(p.source, shifted, p.side))
     return SheetSide(side.sheet_number, side.side, tuple(items))
@@ -1038,11 +1086,11 @@ def overlapping_uses(side: SheetSide, s: Settings) -> list[tuple[int, int]]:
     result = []
     for i, a in enumerate(side.placements):
         if a.source is None: continue
-        ra = (a.slot.x-b,a.slot.y-b,a.slot.x+a.slot.w+b,a.slot.y+a.slot.h+b)
+        ra = gross_rect(s, a.slot)
         for j in range(i+1,len(side.placements)):
             q=side.placements[j]
             if q.source is None: continue
-            rb=(q.slot.x-b,q.slot.y-b,q.slot.x+q.slot.w+b,q.slot.y+q.slot.h+b)
+            rb = gross_rect(s, q.slot)
             if min(ra[2],rb[2])-max(ra[0],rb[0]) > 1e-5 and min(ra[3],rb[3])-max(ra[1],rb[1]) > 1e-5:
                 result.append((i,j))
     return result
@@ -1058,7 +1106,8 @@ def _draw_marks(page: fitz.Page, slot: Slot, s: Settings, blockers=()):
     """Create slim vector trim marks separated from bleed when space permits."""
     net = (slot.x, slot.y, slot.x + slot.w, slot.y + slot.h)
     # Do not print black into bleed. Each mark begins `mark_offset` (default 0.8 mm) after bleed.
-    start = bleed_for(s) + s.mark_offset
+    sides = slot_bleeds(s, slot)
+    start = sides[0] + s.mark_offset if s.bleed_equal else tuple(v + s.mark_offset for v in sides)
     lp = s.mark_length
     gd = s.mark_length if s.mark_gd_eq_lp else s.mark_length_gd
     color = marks_rules.MARK_COLORS[s.mark_color]
@@ -1223,6 +1272,8 @@ def _place_pdf(target: fitz.Page, p: SourcePage, slot: Slot, s: Settings,
         target_w = pt(s.trim_h if original_angle in (90, 270) else s.trim_w)
         target_h = pt(s.trim_w if original_angle in (90, 270) else s.trim_h)
         gross_w, gross_h = gross_dimensions(s)
+        if not s.bleed_equal:   # netto jest na środku oryginału — potrzebny zapas równy największemu spadowi
+            gross_w, gross_h = s.trim_w + 2 * max_bleed(s), s.trim_h + 2 * max_bleed(s)
         if apparent_w + .02 < gross_w or apparent_h + .02 < gross_h:
             raise ValueError(
                 f'{Path(p.path).name}, strona {p.index+1}: oryginał jest za mały '
@@ -1251,22 +1302,29 @@ def _place_pdf(target: fitz.Page, p: SourcePage, slot: Slot, s: Settings,
     if (s.scale_mode != 'Kadruj 1:1' and bleedbox.contains(trim)
             and bleedbox != trim and bleedbox != original.cropbox):
         limit = bleedbox & media
-    angle = (original_angle + slot.rotation) % 360
+    # Dwie konwencje obrotu: /Rotate strony i _rotate_point — zgodnie z ruchem wskazówek zegara; show_pdf_page(rotate=)
+    # — przeciwnie. `turn` = obrót użytku na arkuszu (jak dotąd, w konwencji show_pdf_page), `angle` = wynikowy obrót
+    # w konwencji /Rotate do rachunku wycinka. Dzięki temu strona z /Rotate trafia na arkusz tak, jak widać ją
+    # w czytniku PDF (wcześniej była odwrócona o 180°), a wycinek niesymetryczny (np. różne spady) leży dokładnie.
+    turn = slot.rotation % 360
+    angle = (original_angle - turn) % 360
     final_width = trim.width if angle in (0, 180) else trim.height
     final_height = trim.height if angle in (0, 180) else trim.width
     dest_w, dest_h = pt(slot.w), pt(slot.h)
     if s.auto_orient and orientation_differs(final_width, final_height, dest_w, dest_h):
         # Strona pozioma na pionowym użytku (lub odwrotnie): dodatkowe 90° (H-37), zamiast małej strony
         # z białymi polami (Dopasuj) albo obcięcia połowy grafiki (Wypełnij).
-        angle = (angle + 90) % 360
+        turn = (turn + 90) % 360
+        angle = (original_angle - turn) % 360
         final_width, final_height = final_height, final_width
     if s.scale_mode == FILL_GROSS:
         # Grafika pokrywa cały użytek brutto (netto + spad): spad powstaje z samej grafiki,
         # nadmiar jest docinany do komórki — bez białych krawędzi.
-        b = pt(bleed_for(s))
-        factor, dx, dy = scaling_layout(final_width, final_height, dest_w + 2*b, dest_h + 2*b, FILL_GROSS)
-        base_x = pt(slot.x) - b + dx
-        base_y = pt(slot.y) - b + dy
+        bl, br, bt, bb = (pt(v) for v in slot_bleeds(s, slot))
+        factor, dx, dy = scaling_layout(final_width, final_height, dest_w + _span(bl, br), dest_h + _span(bt, bb),
+                                        FILL_GROSS)
+        base_x = pt(slot.x) - bl + dx
+        base_y = pt(slot.y) - bt + dy
         needed = 0.0
     else:
         factor, dx, dy = scaling_layout(final_width, final_height, dest_w, dest_h,
@@ -1279,17 +1337,18 @@ def _place_pdf(target: fitz.Page, p: SourcePage, slot: Slot, s: Settings,
         # Required source bleed becomes larger when shrinking a source (e.g. A4
         # -> A6 needs 4mm source bleed to supply 2mm at output). Missing areas
         # stay white: the engine never invents an extended image.
-        needed = pt(bleed_for(s))/factor
+        needed = pt(max_bleed(s))/factor
     desired = fitz.Rect(trim.x0-needed, trim.y0-needed,
                         trim.x1+needed, trim.y1+needed)
 
     # The 'Wypełnij' mode enlarges and crops to the target cell. Transform
     # target cell limits backwards, then clip the source to that range, so
     # content never bleeds into neighboring imposition cells.
-    allowed_x0 = (pt(slot.x-bleed_for(s))-base_x)/factor
-    allowed_y0 = (pt(slot.y-bleed_for(s))-base_y)/factor
-    allowed_x1 = (pt(slot.x+slot.w+bleed_for(s))-base_x)/factor
-    allowed_y1 = (pt(slot.y+slot.h+bleed_for(s))-base_y)/factor
+    sl_, sr_, st_, sb_ = slot_bleeds(s, slot)   # każda krawędź użytku ma własny spad (H-53)
+    allowed_x0 = (pt(slot.x-sl_)-base_x)/factor
+    allowed_y0 = (pt(slot.y-st_)-base_y)/factor
+    allowed_x1 = (pt(slot.x+slot.w+sr_)-base_x)/factor
+    allowed_y1 = (pt(slot.y+slot.h+sb_)-base_y)/factor
     orig_corners = [_inverse_rotate_point(x, y, trim.width, trim.height, angle)
                     for x, y in ((allowed_x0, allowed_y0),
                                  (allowed_x0, allowed_y1),
@@ -1327,7 +1386,7 @@ def _place_pdf(target: fitz.Page, p: SourcePage, slot: Slot, s: Settings,
         original.set_rotation(0)
         original.set_cropbox(media)
         target.show_pdf_page(box, sources[p.path], p.index,
-                             clip=visible, rotate=angle, keep_proportion=True)
+                             clip=visible, rotate=(-angle) % 360, keep_proportion=True)
     finally:
         original.set_cropbox(old_crop)
         original.set_rotation(original_angle)
@@ -1366,9 +1425,8 @@ def draw_use_frame(target: fitz.Page, slot: Slot, s: Settings):
     rects = []
     if s.frame_net:
         rects.append((slot.x, slot.y, slot.x + slot.w, slot.y + slot.h))
-    b = bleed_for(s)
-    if s.frame_gross and b > 0:
-        rects.append((slot.x - b, slot.y - b, slot.x + slot.w + b, slot.y + slot.h + b))
+    if s.frame_gross and max_bleed(s) > 0:
+        rects.append(gross_rect(s, slot))
     for x0, y0, x1, y1 in rects:
         target.draw_rect(fitz.Rect(pt(x0), pt(y0), pt(x1), pt(y1)), color=color, fill=None, width=s.frame_pt)
 
@@ -1382,7 +1440,7 @@ def _gross_rects(side: SheetSide, s: Settings, placed_only: bool) -> list[tuple[
     slots = [p.slot for p in side.placements if p.source is not None or not placed_only]
     if not placed_only and s.mode != 'Broszura':
         slots += list(geometry(s).slots)
-    return list(dict.fromkeys((sl.x - b, sl.y - b, sl.x + sl.w + b, sl.y + sl.h + b) for sl in slots))
+    return list(dict.fromkeys(gross_rect(s, sl) for sl in slots))
 
 
 def _marks_extent(s: Settings) -> float:
@@ -1560,6 +1618,24 @@ def own_marks_notes(s: Settings) -> list[str]:
     return notes
 
 
+def bleed_duplex_notes(s: Settings) -> list[str]:
+    """Dupleks z różnymi spadami: przy przewracaniu arkusza tył jest lustrzanym odbiciem przodu, więc spady na osi
+    przewrotu muszą być równe, inaczej linie cięcia tyłu nie trafią w przód (E1: „spady górny i dolny przy tym
+    sposobie montażu powinny być równe”; H-53)."""
+    if s.bleed_equal or s.mode != 'Dwustronnie':
+        return []
+    l, r, t, b = marks_rules.rotate_bleeds(bleeds(s), geometry(s).rotation)
+    landscape = s.sheet_w >= s.sheet_h
+    if (s.flip == 'Długa krawędź') != landscape:        # tył odbity w poziomie (jak _flip_slot)
+        if abs(l - r) > 1e-6:
+            return [f'Przy tym sposobie przewracania arkusza spady lewy i prawy użytku na arkuszu powinny być równe '
+                    f'(teraz {l:g} i {r:g} mm) — inaczej linie cięcia tyłu nie pokryją się z przodem.']
+    elif abs(t - b) > 1e-6:
+        return [f'Przy tym sposobie przewracania arkusza spady górny i dolny użytku na arkuszu powinny być równe '
+                f'(teraz {t:g} i {b:g} mm) — inaczej linie cięcia tyłu nie pokryją się z przodem.']
+    return []
+
+
 def reg2_notes(s: Settings) -> list[str]:
     """Uwaga, gdy pasery w polu brutto wychodzą poza arkusz przy obecnej siatce."""
     if not s.reg2_on:
@@ -1569,7 +1645,7 @@ def reg2_notes(s: Settings) -> list[str]:
     slots = list(g.slots)
     if not slots:
         return []
-    grid = marks_rules.bounding([(sl.x - b, sl.y - b, sl.x + sl.w + b, sl.y + sl.h + b) for sl in slots])
+    grid = marks_rules.bounding([gross_rect(s, sl) for sl in slots])
     for (x0, y0), (x1, y1) in marks_rules.gross_register_segments(grid, s.reg2_v1, s.reg2_v2, s.reg2_h1, s.reg2_h2):
         if min(x0, x1) < 0 or min(y0, y1) < 0 or max(x0, x1) > s.sheet_w or max(y0, y1) > s.sheet_h:
             return ['Pasery w polu brutto wychodzą poza arkusz — zmniejsz V1/H1/H2 albo zwiększ marginesy.']
@@ -1581,7 +1657,7 @@ def strip_notes(s: Settings) -> list[str]:
         return []
     g = geometry(s)
     b = bleed_for(s)
-    grid = marks_rules.bounding([(sl.x - b, sl.y - b, sl.x + sl.w + b, sl.y + sl.h + b) for sl in g.slots])
+    grid = marks_rules.bounding([gross_rect(s, sl) for sl in g.slots])
     bands, notes = strip_bands(s, grid)
     if not (s.strip_top or s.strip_bottom or s.strip_gutter):
         notes.append('Pasek kontroli koloru włączony, ale nie wybrano położenia (góra / dół / wycinka).')
@@ -1654,7 +1730,7 @@ def slug_notes(s: Settings) -> list[str]:
         return ['Opis arkusza włączony, ale nie wybrano położenia (krawędź górna / boczna).']
     g = geometry(s)
     b = bleed_for(s)
-    grid = marks_rules.bounding([(sl.x - b, sl.y - b, sl.x + sl.w + b, sl.y + sl.h + b) for sl in g.slots])
+    grid = marks_rules.bounding([gross_rect(s, sl) for sl in g.slots])
     sample = _slug_for(SheetSide(1, 0, ()), s, 'montaz.pdf')
     if not slug_layout(s, grid, sample):
         return ['Przy obecnych ustawieniach opis arkusza się nie mieści (za mały margines nad lub obok użytków).']
@@ -1987,15 +2063,15 @@ def export_pages(project: Project, output: str, metadata: dict[str, str] | None 
     out = fitz.open()
     try:
         for source in _page_refs(project.jobs, sources):
-            w = s.trim_w + 2*bleed_for(s)
-            h = s.trim_h + 2*bleed_for(s)
+            bl, br, bt, bb = bleeds(s)      # strona w formacie docelowym: spady L/P/G/D dla obrotu 0°
+            w = s.trim_w + _span(bl, br)
+            h = s.trim_h + _span(bt, bb)
             page = out.new_page(width=pt(w), height=pt(h))
-            slot = Slot(bleed_for(s), bleed_for(s), s.trim_w, s.trim_h, 0, 0, 0)
+            slot = Slot(bl, bt, s.trim_w, s.trim_h, 0, 0, 0)
             if source is not None:          # wakat = pusta strona (numeracja kolejnych stron bez zmian)
                 _place_pdf(page, source, slot, s, sources, offsets)
-            if bleed_for(s):
-                page.set_trimbox(fitz.Rect(pt(bleed_for(s)), pt(bleed_for(s)),
-                                           pt(bleed_for(s)+s.trim_w), pt(bleed_for(s)+s.trim_h)))
+            if max(bl, br, bt, bb):
+                page.set_trimbox(fitz.Rect(pt(bl), pt(bt), pt(bl+s.trim_w), pt(bt+s.trim_h)))
                 page.set_bleedbox(page.rect)
         if len(out) == 0:
             raise ValueError('Brak stron do eksportu')

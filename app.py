@@ -474,15 +474,24 @@ class App(tk.Tk):
         ttk.Label(g, textvariable=self.autofill_text, style='Caption.TLabel', foreground=ACCENT,
                   wraplength=150, justify='left').grid(row=1, column=0, rowspan=2, sticky='w')
 
-        g = self._group(tab, 'Spady (na stronę) [mm]')
+        g = self._group(tab, 'Spady (dla obrotu 0°) [mm]')
         self.variables['bleed'] = tk.StringVar(value='1.5')
         self._spin(g, 'bleed', 0, 0, 'Spad:', step=0.5, high=50, width=5)
+        # Jak w Imp4: „=” — spady równe; bez niego osobno lewy / prawy / górny / dolny (H-53).
+        self.bleed_equal_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(g, text='=', variable=self.bleed_equal_var, command=self._bleed_mode_changed).grid(
+            row=0, column=2, padx=(4, 4), sticky='w')
+        self.derived_bleed_var = tk.StringVar(value='')
+        ttk.Label(g, textvariable=self.derived_bleed_var, style='Caption.TLabel', foreground=ACCENT,
+                  wraplength=110, justify='left').grid(row=0, column=3, sticky='w')
+        sides = ttk.Frame(g, style='Ribbon.TFrame')
+        sides.grid(row=1, column=0, columnspan=4, sticky='w')
+        for col, (key, label) in enumerate((('bleed_l', 'L'), ('bleed_r', 'P'), ('bleed_t', 'G'), ('bleed_b', 'D'))):
+            self.variables[key] = tk.StringVar(value='0')
+            self._spin(sides, key, 0, col * 2, label, step=0.5, high=50, width=3)
         self.auto_gross_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(g, text='brutto = netto + 2 × spad', variable=self.auto_gross_var,
-                        command=self.toggle_auto_gross).grid(row=1, column=0, columnspan=2, sticky='w')
-        self.derived_bleed_var = tk.StringVar(value='Spad: 1,5 mm z każdej strony')
-        ttk.Label(g, textvariable=self.derived_bleed_var, style='Caption.TLabel',
-                  foreground=ACCENT, wraplength=230, justify='left').grid(row=2, column=0, columnspan=2, sticky='w')
+        ttk.Checkbutton(g, text='brutto = netto + spady', variable=self.auto_gross_var,
+                        command=self.toggle_auto_gross).grid(row=2, column=0, columnspan=4, sticky='w')
 
         g = self._group(tab, 'Odstępy i marginesy [mm]')
         self._spin(g, 'gap_x', 0, 0, 'Odstęp X:', width=5)
@@ -988,6 +997,12 @@ class App(tk.Tk):
     def _fill_fields(self):
         s=self.project.settings
         self._suspend_events=True
+        self.bleed_equal_var.set(s.bleed_equal)
+        for field in ('bleed_l','bleed_r','bleed_t','bleed_b'):
+            self.variables[field].set(f'{getattr(s, field):g}')
+        self.entries['bleed'].configure(state='normal' if s.bleed_equal else 'disabled')
+        for field in ('bleed_l','bleed_r','bleed_t','bleed_b'):
+            self.entries[field].configure(state='disabled' if s.bleed_equal else 'normal')
         for field in ('sheet_w','sheet_h','source_w','source_h','gross_w','gross_h','trim_w','trim_h','bleed','margin_x','margin_y','gap_x','gap_y','verso_shift_x','verso_shift_y','columns','rows'):
             if field not in self.variables:
                 # single control (margin_y)
@@ -1059,22 +1074,52 @@ class App(tk.Tk):
             nw=float(self.variables['trim_w'].get().replace(',','.'))
             nh=float(self.variables['trim_h'].get().replace(',','.'))
             bleed=float(self.variables['bleed'].get().replace(',','.'))
+            l,r,t,b=self._side_bleeds(bleed)
             if self.auto_gross_var.get():
-                gw=round(nw+2*bleed,3)
-                gh=round(nh+2*bleed,3)
+                gw=round(nw+2*bleed,3) if self.bleed_equal_var.get() else round(nw+l+r,3)
+                gh=round(nh+2*bleed,3) if self.bleed_equal_var.get() else round(nh+t+b,3)
                 if self.variables['gross_w'].get()!=str(gw):self.variables['gross_w'].set(str(gw))
                 if self.variables['gross_h'].get()!=str(gh):self.variables['gross_h'].set(str(gh))
-                self.derived_bleed_var.set(f'Automatycznie: {gw:g} × {gh:g} mm; spad {bleed:g} mm')
+                self.derived_bleed_var.set(f'brutto {gw:g} × {gh:g} mm')
+            elif not self.bleed_equal_var.get():
+                self.derived_bleed_var.set('różne spady: włącz brutto = netto + spady')
             else:
                 w=float(self.variables['gross_w'].get().replace(',','.'))
                 h=float(self.variables['gross_h'].get().replace(',','.'))
                 bx,by=(w-nw)/2,(h-nh)/2
                 if bx<0 or by<0 or abs(bx-by)>.02:
-                    self.derived_bleed_var.set('BŁĄD: brutto − netto musi dawać identyczny spad z każdej strony.')
+                    self.derived_bleed_var.set('BŁĄD: brutto − netto ≠ równy spad')
                 else:
-                    self.derived_bleed_var.set(f'Ręczne brutto; spad wynikowy: {bx:.2f} mm na stronę')
+                    self.derived_bleed_var.set(f'ręczne brutto, spad {bx:.2f}')
         except (ValueError, KeyError):
-            self.derived_bleed_var.set('Wprowadź prawidłowe wymiary netto i spad.')
+            self.derived_bleed_var.set('wpisz netto i spad')
+
+    def _side_bleeds(self, bleed):
+        """Spady L/P/G/D z pól (przy „=” cztery razy ten sam spad)."""
+        if self.bleed_equal_var.get():
+            return (bleed, bleed, bleed, bleed)
+        return tuple(float(self.variables[k].get().replace(',', '.') or 0)
+                     for k in ('bleed_l', 'bleed_r', 'bleed_t', 'bleed_b'))
+
+    def _bleed_mode_changed(self):
+        """„=” włączone: jeden spad; wyłączone: cztery pola, wypełnione dotychczasowym spadem."""
+        equal = self.bleed_equal_var.get()
+        if not equal:
+            try:
+                bleed = float(self.variables['bleed'].get().replace(',', '.'))
+            except ValueError:
+                bleed = 0.0
+            for key in ('bleed_l', 'bleed_r', 'bleed_t', 'bleed_b'):
+                try:
+                    current = float(self.variables[key].get().replace(',', '.') or 0)
+                except ValueError:
+                    current = 0.0
+                if current == 0:
+                    self.variables[key].set(f'{bleed:g}')
+        self.entries['bleed'].configure(state='normal' if equal else 'disabled')
+        for key in ('bleed_l', 'bleed_r', 'bleed_t', 'bleed_b'):
+            self.entries[key].configure(state='disabled' if equal else 'normal')
+        self.schedule_refresh()
 
     def _read_fields(self) -> Settings:
         data={}
@@ -1085,7 +1130,11 @@ class App(tk.Tk):
             data[key]=int(value) if key in ('columns','rows') else float(value.replace(',','.'))
         if self.auto_source_var.get():
             data['source_w']=data['source_h']=0
-        if self.auto_gross_var.get():
+        data['bleed_equal']=self.bleed_equal_var.get()
+        if self.auto_gross_var.get() and not data['bleed_equal']:
+            data['gross_w']=round(data['trim_w']+data['bleed_l']+data['bleed_r'],3)
+            data['gross_h']=round(data['trim_h']+data['bleed_t']+data['bleed_b'],3)
+        elif self.auto_gross_var.get():
             data['gross_w']=round(data['trim_w']+2*data['bleed'],3)
             data['gross_h']=round(data['trim_h']+2*data['bleed'],3)
         elif self.scale_var.get() == 'Kadruj 1:1' and data['gross_w'] > 0:
@@ -1478,7 +1527,9 @@ class App(tk.Tk):
         self.summary_vars['sheets'].set(f'{sheets}{more}' + ('  (dwustronnie)' if s.mode == 'Dwustronnie' else ''))
         self.summary_vars['capacity'].set(str(capacity) if capacity else '4 strony (2-up)')
         self.summary_vars['empty'].set(f'{empty}{more}')
-        self.summary_vars['use'].set(f'{gw:g} × {gh:g} / {s.trim_w:g} × {s.trim_h:g} mm  (spad {bleed_for(s):g})')
+        spad = (f'spad {bleed_for(s):g}' if s.bleed_equal else
+                'spady L/P/G/D ' + '/'.join(f'{v:g}' for v in (s.bleed_l, s.bleed_r, s.bleed_t, s.bleed_b)))
+        self.summary_vars['use'].set(f'{gw:g} × {gh:g} / {s.trim_w:g} × {s.trim_h:g} mm  ({spad})')
 
     def _sheet_label(self, side, duplex):
         return f'{side.sheet_number}{"R" if side.side == 0 else "V"}' if duplex else str(side.sheet_number)
