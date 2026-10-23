@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Separate bleeds L / P / G / D „for rotation 0°” as in the original: „=” switch and four fields in the ribbon
+  group „Spady (dla obrotu 0°)”; bleeds rotate with the use; grid cells, gross rectangles, cut marks, artwork
+  clipping, single-page export and preflight use the bleed of each edge; preflight note for duplex when the
+  bleeds on the flip axis differ. Equal bleeds (default) give exactly the previous output. H-53.
+- Fix: a PDF page with /Rotate was placed on the sheet rotated by 180° compared with the PDF viewer
+  (show_pdf_page rotates counter-clockwise, /Rotate clockwise). Pages without /Rotate are unchanged.
+- The bleed ribbon group is narrower than before (the ribbon fits narrower windows again).
+- Self-test retries the transient Tk start error seen during builds; the test shows the full report.
+
 ## 0.5.7
 
 Nowości w ImpoCraft 0.5.7 — generatory kodów (Programy dodatkowe → Kody):

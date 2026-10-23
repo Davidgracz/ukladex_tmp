@@ -49,8 +49,9 @@ def test_make_icon(tmp_path):
 def test_self_test_passes(tmp_path):
     import selftest
     report = tmp_path / 'raport.txt'
-    assert selftest.run(str(report)) == 0
-    assert report.read_text(encoding='utf-8').startswith('OK')
+    code = selftest.run(str(report))
+    text = report.read_text(encoding='utf-8')
+    assert code == 0 and text.startswith('OK'), text
 
 
 def test_data_from_old_program_name_is_copied_once(monkeypatch, tmp_path):

@@ -128,20 +128,47 @@ def cut_mark_segments(net: Rect, start: float, lp: float, gd: float,
     jest pomijana w całości — tak jak dotąd w Studio (kolejność kresek też bez zmian).
     """
     x0, y0, x1, y1 = net
+    sl, sr, st, sb = _starts(start)
     segments = []
     if lp > 0:
-        for cx in (x0, x1):
+        for cx, s in ((x0, sl), (x1, sr)):
             d = -1 if cx == x0 else 1
-            a, b = cx + d * start, cx + d * (start + lp)
+            a, b = cx + d * s, cx + d * (s + lp)
             if min(a, b) >= 0 and max(a, b) <= sheet_w:
                 segments += [((a, yy), (b, yy)) for yy in (y0, y1)]
     if gd > 0:
-        for cy in (y0, y1):
+        for cy, s in ((y0, st), (y1, sb)):
             d = -1 if cy == y0 else 1
-            a, b = cy + d * start, cy + d * (start + gd)
+            a, b = cy + d * s, cy + d * (s + gd)
             if min(a, b) >= 0 and max(a, b) <= sheet_h:
                 segments += [((xx, a), (xx, b)) for xx in (x0, x1)]
     return segments
+
+
+def _starts(start) -> tuple[float, float, float, float]:
+    """Odstęp kresek od linii cięcia: jedna liczba (jak dotąd) albo (lewa, prawa, góra, dół) — różne spady."""
+    if isinstance(start, (tuple, list)):
+        return tuple(start)
+    return (start, start, start, start)
+
+
+def rotate_bleeds(bleeds: tuple[float, float, float, float], angle: int) -> tuple[float, float, float, float]:
+    """Spady (L, P, G, D) strony „dla obrotu 0°” (E1) → spady na arkuszu przy użytku obróconym o `angle`.
+
+    Kierunek jak przy wstawianiu grafiki w silniku (sprawdzone pikselami): przy Slot.rotation = 90° górna krawędź
+    strony trafia na lewą krawędź użytku, prawa na górną, dolna na prawą, lewa na dolną (H-53).
+    """
+    l, r, t, b = bleeds
+    angle %= 360
+    if angle == 0:
+        return (l, r, t, b)
+    if angle == 90:
+        return (t, b, r, l)
+    if angle == 180:
+        return (r, l, b, t)
+    if angle == 270:
+        return (b, t, l, r)
+    raise ValueError('Obrót użytku: 0, 90, 180 albo 270°')
 
 
 def corner_segments(net: Rect, length: float, corners) -> list[Segment]:
@@ -168,13 +195,14 @@ def center_segments(net: Rect, start: float, lp: float, gd: float,
     o tym samym odstępie i długościach co znaczniki cięcia (LP przy bokach, GD u góry i u dołu)."""
     x0, y0, x1, y1 = net
     mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+    sl, sr, st, sb = _starts(start)
     segments = []
-    for cx, d in ((x0, -1), (x1, 1)):
-        a, b = cx + d * start, cx + d * (start + lp)
+    for cx, d, s in ((x0, -1, sl), (x1, 1, sr)):
+        a, b = cx + d * s, cx + d * (s + lp)
         if lp > 0 and min(a, b) >= 0 and max(a, b) <= sheet_w:
             segments.append(((a, my), (b, my)))
-    for cy, d in ((y0, -1), (y1, 1)):
-        a, b = cy + d * start, cy + d * (start + gd)
+    for cy, d, s in ((y0, -1, st), (y1, 1, sb)):
+        a, b = cy + d * s, cy + d * (s + gd)
         if gd > 0 and min(a, b) >= 0 and max(a, b) <= sheet_h:
             segments.append(((mx, a), (mx, b)))
     return segments
