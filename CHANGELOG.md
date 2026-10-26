@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Output PDF size as in the original's „Rozmiar wynikowego pdfa”: paper (default, unchanged), print area, paper +
+  grip, print area + grip, plate (width, height, grip, reduce by pt); technical margin („na łapki”) at the gripper
+  edge; TrimBox marks the paper on larger pages. Settings in „Ustawienia…”, page size on the status bar,
+  stored in the project. H-54.
+
 ## 0.5.8
 
 Nowości i poprawki w ImpoCraft 0.5.8:
