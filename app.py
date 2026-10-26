@@ -23,6 +23,7 @@ from duplex_test_sheet import create_duplex_test_pdf, correction_from_front_erro
 from economic_csv import write_economic_csv
 from crop_editor import CropEditor
 from ui_icons import draw as draw_icon
+from engine import FLIP_MB, FLIP_MC, TURN_MB, TURN_MC, TURN_MODES
 from engine import RUN_MODES, RUN_ALL, gutter_notes, slug_notes, strip_notes, FILL_GROSS
 from engine import CROP_NET, CROP_GROSS, CROP_BLEED, crop_output_name, crop_to_file, job_rows, export_files, output_layout
 import page_rows
@@ -173,6 +174,13 @@ SHEET_KINDS = (
     ('Dwustronnie|Krótka krawędź', 'duplex_short', 'Dwustronnie\nkrótka krawędź'),
     ('Ekonomiczny', 'economic', 'Ekonomiczny\nmix nakładów'),
 )
+# Odwracanie przez markę (H-55): mniejsze przyciski w siatce 2 × 2 obok głównych rodzajów.
+TURN_KINDS = (
+    (f'Dwustronnie|{FLIP_MB}', 'flip_mb', 'Pełny MB'),
+    (f'Dwustronnie|{FLIP_MC}', 'flip_mc', 'Pełny MC'),
+    (TURN_MB, 'turn_mb', 'Niepełny MB'),
+    (TURN_MC, 'turn_mc', 'Niepełny MC'),
+)
 
 TRIM_PRESETS = {
     'Wizytówka 93 × 53 mm': (93,53),
@@ -263,10 +271,17 @@ class App(tk.Tk):
                         lightcolor=ACCENT, darkcolor=ACCENT, borderwidth=2, relief='solid',
                         font=('Segoe UI', 12, 'bold'), padding=(10, 14))
         style.map('Run.TButton', background=[('active', SELECT)])
-        style.configure('Kind.Toolbutton', background=RIBBON, foreground=TEXT, padding=(6, 4),
+        style.configure('Kind.Toolbutton', background=RIBBON, foreground=TEXT, padding=(2, 4),
                         font=('Segoe UI', 8), anchor='center', justify='center', width=13)
         style.map('Kind.Toolbutton', background=[('selected', SELECT), ('active', HOVER)],
                   bordercolor=[('selected', ACCENT)])
+        style.configure('Kind.TMenubutton', background=RIBBON, foreground=TEXT, padding=(2, 4),
+                        font=('Segoe UI', 8), anchor='center', justify='center', width=12, arrowsize=0)
+        style.map('Kind.TMenubutton', background=[('active', HOVER)])
+        style.configure('KindOn.TMenubutton', background=SELECT, foreground=TEXT, padding=(2, 4),
+                        font=('Segoe UI', 8), anchor='center', justify='center', width=12, arrowsize=0,
+                        bordercolor=ACCENT)
+        style.map('KindOn.TMenubutton', background=[('active', HOVER)])
         style.configure('Tool.Toolbutton', background=PANEL, foreground=TEXT, padding=(4, 5),
                         font=('Segoe UI', 8), anchor='center', justify='center', width=9)
         style.map('Tool.Toolbutton', background=[('selected', SELECT), ('active', HOVER)],
@@ -313,7 +328,7 @@ class App(tk.Tk):
 
     def _group(self, parent, caption):
         """Ribbon group: controls on top, caption underneath, vertical divider on the right."""
-        outer = ttk.Frame(parent, style='Ribbon.TFrame', padding=(8, 4, 8, 1))
+        outer = ttk.Frame(parent, style='Ribbon.TFrame', padding=(4, 4, 4, 1))
         outer.pack(side='left', fill='y')
         ttk.Label(outer, text=caption, style='Caption.TLabel').pack(side='bottom', pady=(2, 0))
         inner = ttk.Frame(outer, style='Ribbon.TFrame')
@@ -517,6 +532,16 @@ class App(tk.Tk):
             ttk.Radiobutton(g, text=text, image=self._icon(icon), compound='top', value=value,
                             variable=self.sheet_kind, style='Kind.Toolbutton',
                             command=self._apply_sheet_kind).pack(side='left', fill='y', padx=1)
+        # Przez markę (MB/MC): jeden przycisk z menu, żeby wstęga się nie poszerzała.
+        menu = tk.Menu(self, tearoff=False)
+        for value, icon, text in TURN_KINDS:
+            menu.add_radiobutton(label=text, image=self._icon(icon, 20), compound='left', value=value,
+                                 variable=self.sheet_kind, command=self._apply_sheet_kind)
+        self.turn_button = ttk.Menubutton(g, text='Przez markę ▾', image=self._icon('turn_mb'), compound='top',
+                                          menu=menu, style='Kind.TMenubutton')
+        self.turn_button.pack(side='left', fill='y', padx=1)
+        self.sheet_kind.trace_add('write', lambda *_: self._mark_turn_button())
+        self._mark_turn_button()
 
     def _ribbon_crop(self, ribbon):
         tab = ttk.Frame(ribbon, style='Ribbon.TFrame')
@@ -767,6 +792,17 @@ class App(tk.Tk):
         finally:
             self._syncing_kind = False
 
+    def _mark_turn_button(self):
+        """Przycisk „Przez markę” pokazuje wybrany wariant i jest podświetlony jak zaznaczony rodzaj."""
+        kind = self.sheet_kind.get()
+        chosen = next(((icon, text) for value, icon, text in TURN_KINDS if value == kind), None)
+        if chosen:
+            self.turn_button.configure(text=f'Przez markę ▾\n{chosen[1]}', image=self._icon(chosen[0]),
+                                       style='KindOn.TMenubutton')
+        else:
+            self.turn_button.configure(text='Przez markę ▾\n(MB / MC)', image=self._icon('turn_mb'),
+                                       style='Kind.TMenubutton')
+
     def _sync_sheet_kind(self):
         if getattr(self, '_syncing_kind', False):
             return
@@ -903,6 +939,9 @@ class App(tk.Tk):
             settings = self._read_fields()
             if settings.mode != 'Dwustronnie':
                 raise ValueError('Wybierz tryb Dwustronnie przed generowaniem arkusza testowego.')
+            if settings.flip in (FLIP_MB, FLIP_MC):
+                raise ValueError('Arkusz kalibracyjny obsługuje odwracanie po długiej i krótkiej krawędzi '
+                                 '(drukarka). Przy odwracaniu przez markę ustaw pasowanie na maszynie.')
         except (ValueError, KeyError) as exc:
             messagebox.showerror('Arkusz kalibracyjny',str(exc),parent=self)
             return
@@ -1544,7 +1583,7 @@ class App(tk.Tk):
         more = '+' if len(sides) >= self.MAX_LISTED_SIDES else ''
         gw, gh = gross_dimensions(s)
         self.summary_vars['pages'].set(f'{filled}{more}')
-        self.summary_vars['sheets'].set(f'{sheets}{more}' + ('  (dwustronnie)' if s.mode == 'Dwustronnie' else ''))
+        self.summary_vars['sheets'].set(f'{sheets}{more}' + ('  (dwustronnie)' if s.mode == 'Dwustronnie' else '  (przód i tył na jednej płycie)' if s.mode in TURN_MODES else ''))
         self.summary_vars['capacity'].set(str(capacity) if capacity else '4 strony (2-up)')
         self.summary_vars['empty'].set(f'{empty}{more}')
         spad = (f'spad {bleed_for(s):g}' if s.bleed_equal else
@@ -1608,6 +1647,8 @@ class App(tk.Tk):
                 g=geometry(s)
                 capacity = g.capacity
                 details=f'{g.cols} × {g.rows} = {g.capacity} użytków / strona  •  obrót {g.rotation}°'
+                if s.mode in TURN_MODES:
+                    details += f'  •  {g.capacity // 2} par przód/tył na płycie'
             else:
                 details='Broszura zeszytowa 2-up (4 strony na arkusz)'
             sides = self._collect_sides()
@@ -1633,7 +1674,7 @@ class App(tk.Tk):
                     opposite, other = preview(self.project, pixels=1300, index=matching)
                 if other is not None and other.sheet_number == side.sheet_number and other.side != side.side:
                     landscape = s.sheet_w >= s.sheet_h
-                    flip_horizontal = (s.flip == 'Długa krawędź') != landscape
+                    flip_horizontal = s.flip == FLIP_MB or (s.flip != FLIP_MC and (s.flip == 'Długa krawędź') != landscape)
                     inverse = opposite.transpose(Image.Transpose.FLIP_LEFT_RIGHT if flip_horizontal else Image.Transpose.FLIP_TOP_BOTTOM)
                     if inverse.size != image.size:
                         inverse = inverse.resize(image.size)

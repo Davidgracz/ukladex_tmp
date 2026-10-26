@@ -226,6 +226,14 @@ class Settings:
             self.strip_colors = tuple(None if c is None else tuple(c) for c in self.strip_colors)
 
 
+# Odwracanie przez markę (E1: „Dwustronny pełny / niepełny przez markę boczną (MB) / czołową (MC)”, H-55).
+FLIP_MB = 'Marka boczna (MB)'        # pełny: tył na osobnej płycie, arkusz odwracany przez markę boczną
+FLIP_MC = 'Marka czołowa (MC)'       # pełny: odwracany przez markę czołową (chwytaki zmieniają krawędź)
+TURN_MB = 'Niepełny MB'              # niepełny: przód i tył na jednej płycie, work-and-turn
+TURN_MC = 'Niepełny MC'              # niepełny: work-and-tumble
+TURN_MODES = (TURN_MB, TURN_MC)
+DUPLEX_LIKE = ('Dwustronnie',) + TURN_MODES
+
 FILL_GROSS = 'Wypełnij ze spadem'  # grafika pokrywa netto + spad; spad powstaje z grafiki, nadmiar jest docinany
 SCALE_MODES = ('Bez skalowania', 'Kadruj 1:1', 'Dopasuj', 'Wypełnij', FILL_GROSS)
 
@@ -354,10 +362,10 @@ def validate(settings: Settings):
         raise ValueError('Liczba kolumn/wierszy musi być dodatnia')
     if settings.rotation not in ('Auto', '0', '90', '180', '270'):
         raise ValueError('Nieznana orientacja')
-    if settings.mode not in ('Jednostronnie', 'Dwustronnie', 'Broszura', 'Ekonomiczny'):
+    if settings.mode not in ('Jednostronnie', 'Dwustronnie', 'Broszura', 'Ekonomiczny') + TURN_MODES:
         raise ValueError('Nieznany tryb montażu')
-    if settings.flip not in ('Długa krawędź', 'Krótka krawędź'):
-        raise ValueError('Nieznana metoda odwracania')
+    if settings.flip not in ('Długa krawędź', 'Krótka krawędź', FLIP_MB, FLIP_MC):
+        raise ValueError('Nieznany sposób odwracania arkusza')
     for key in ('verso_shift_x', 'verso_shift_y'):
         value = getattr(settings, key)
         if type(value) not in (int, float) or not isfinite(value):
@@ -449,9 +457,9 @@ def validate(settings: Settings):
     naming.output_parts(settings.output_files)
     import autofill
     autofill.check(settings.fill_pages, settings.fill_corner, settings.fill_repeat)
-    if not autofill_default(settings) and settings.mode not in ('Jednostronnie', 'Dwustronnie'):
+    if not autofill_default(settings) and settings.mode not in ('Jednostronnie',) + DUPLEX_LIKE:
         raise ValueError('Autowypełnianie działa w montażu jednostronnym i dwustronnym — przywróć ustawienia domyślne.')
-    if settings.mode == 'Dwustronnie' and (settings.fill_pages != autofill.PAGES_ALL or settings.fill_even_last):
+    if settings.mode in DUPLEX_LIKE and (settings.fill_pages != autofill.PAGES_ALL or settings.fill_even_last):
         raise ValueError('W montażu dwustronnym autowypełnianie bierze wszystkie strony w parach przód/tył — '
                          'wybór parzystych/nieparzystych i „parzyste na końcu” rozbiłyby pary.')
     if not isinstance(settings.own_folder, str):
@@ -656,6 +664,11 @@ def _duplex_pairs(jobs: list[Job], documents: dict[str, fitz.Document]):
 
 def _flip_slot(slot: Slot, s: Settings) -> Slot:
     """Reorder back-side slots to match the physical sheet after a duplex flip."""
+    if s.flip == FLIP_MB:        # odwrócenie przez markę boczną: lustro w poziomie, głowa bez zmian
+        return Slot(s.sheet_w-slot.x-slot.w, slot.y, slot.w, slot.h, slot.rotation, slot.col, slot.row)
+    if s.flip == FLIP_MC:        # przez markę czołową: lustro w pionie i tył obrócony o 180° (głowa do głowy)
+        return Slot(slot.x, s.sheet_h-slot.y-slot.h, slot.w, slot.h, (slot.rotation + 180) % 360,
+                    slot.col, slot.row)
     landscape = s.sheet_w >= s.sheet_h
     flip_horizontal = (s.flip == 'Długa krawędź') != landscape
     if flip_horizontal:
@@ -868,6 +881,48 @@ def _filled_groups(units, s: Settings, capacity: int, page_number):
         yield tuple(group)
 
 
+def turn_slot(slot: Slot, s: Settings, g) -> Slot:
+    """Pole tyłu dla pola przodu przy odwracaniu przez markę na jednej płycie (H-55)."""
+    if s.mode == TURN_MB:
+        return Slot(s.sheet_w - slot.x - slot.w, slot.y, slot.w, slot.h, slot.rotation, g.cols - 1 - slot.col, slot.row)
+    return Slot(slot.x, s.sheet_h - slot.y - slot.h, slot.w, slot.h, (slot.rotation + 180) % 360,
+                slot.col, g.rows - 1 - slot.row)
+
+
+def turn_front_slots(s: Settings, g, slots) -> list[Slot]:
+    """Pola przodów: lewa połowa kolumn (MB) albo górna połowa wierszy (MC); kolejność wypełniania zachowana."""
+    if s.mode == TURN_MB:
+        if g.cols % 2:
+            raise ValueError(f'Odwracanie przez markę boczną: liczba kolumn przy wybranym arkuszu musi być parzysta '
+                             f'(jest {g.cols}). Ustaw kolumny (K) albo zmień arkusz.')
+        l, r, _, _ = marks_rules.rotate_bleeds(bleeds(s), g.rotation)
+        if abs(l - r) > 1e-6:
+            raise ValueError('Odwracanie przez markę boczną: spady lewy i prawy użytku na arkuszu muszą być równe.')
+        return [sl for sl in slots if sl.col < g.cols // 2]
+    if g.rows % 2:
+        raise ValueError(f'Odwracanie przez markę czołową: liczba wierszy przy wybranym arkuszu musi być parzysta '
+                         f'(jest {g.rows}). Ustaw wiersze (W) albo zmień arkusz.')
+    l, r, t, b = marks_rules.rotate_bleeds(bleeds(s), g.rotation)
+    if abs(t - b) > 1e-6 or abs(l - r) > 1e-6:   # tył obrócony o 180°: zamienia oba spady w każdej osi
+        raise ValueError('Odwracanie przez markę czołową: spady górny = dolny i lewy = prawy (tył jest obrócony o 180°).')
+    return [sl for sl in slots if sl.row < g.rows // 2]
+
+
+def _turn_sides(jobs, documents, s: Settings, g, slots) -> Iterator[SheetSide]:
+    """Niepełny MB / MC: na jednej stronie arkusza przody i tyły (lustrzane pola); arkusz drukowany dwa razy tą
+    samą płytą daje dwa komplety (H-55)."""
+    fronts = turn_front_slots(s, g, slots)
+    groups = _filled_groups(_duplex_pairs(jobs, documents), s, len(fronts),
+                            lambda pair: None if pair[0] is None else pair[0].index + 1)
+    for sheet_no, group in enumerate(groups, start=1):
+        items = []
+        for i, slot in enumerate(fronts):
+            front, back = group[i] if i < len(group) else (None, None)
+            items.append(Placement(front, slot, 0))
+            items.append(Placement(back, turn_slot(slot, s, g), 0))
+        yield SheetSide(sheet_no, 0, tuple(items))
+
+
 def plan_sides(jobs: list[Job], documents: dict[str, fitz.Document], s: Settings) -> Iterator[SheetSide]:
     if not jobs:
         return
@@ -879,6 +934,9 @@ def plan_sides(jobs: list[Job], documents: dict[str, fitz.Document], s: Settings
         return
     g = geometry(s)
     slots = fill_slots(s, g)
+    if s.mode in TURN_MODES:
+        yield from _turn_sides(jobs, documents, s, g, slots)
+        return
     if s.mode == 'Jednostronnie':
         groups = _filled_groups(_page_refs(jobs, documents), s, g.capacity,
                                 lambda ref: None if ref is None else ref.index + 1)
@@ -1640,7 +1698,11 @@ def bleed_duplex_notes(s: Settings) -> list[str]:
         return []
     l, r, t, b = marks_rules.rotate_bleeds(bleeds(s), geometry(s).rotation)
     landscape = s.sheet_w >= s.sheet_h
-    if (s.flip == 'Długa krawędź') != landscape:        # tył odbity w poziomie (jak _flip_slot)
+    horizontal = s.flip == FLIP_MB or (s.flip not in (FLIP_MB, FLIP_MC) and (s.flip == 'Długa krawędź') != landscape)
+    if s.flip == FLIP_MC and (abs(t - b) > 1e-6 or abs(l - r) > 1e-6):   # tył obrócony o 180°
+        return [f'Przy odwracaniu przez markę czołową tył jest obrócony o 180° — spady górny i dolny oraz lewy '
+                f'i prawy powinny być równe (teraz {l:g}/{r:g}/{t:g}/{b:g} mm).']
+    if horizontal:                                     # tył odbity w poziomie (jak _flip_slot)
         if abs(l - r) > 1e-6:
             return [f'Przy tym sposobie przewracania arkusza spady lewy i prawy użytku na arkuszu powinny być równe '
                     f'(teraz {l:g} i {r:g} mm) — inaczej linie cięcia tyłu nie pokryją się z przodem.']

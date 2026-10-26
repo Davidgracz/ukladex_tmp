@@ -48,6 +48,22 @@ def draw(name, size=30):
             _arrow(d, (8*u, 26.5*u), (28*u, 26.5*u), int(2*u))
         else:
             _arrow(d, (25.5*u, 6*u), (25.5*u, 28*u), int(2*u))
+    elif name in ('flip_mb', 'flip_mc'):    # pełny przez markę: tył na osobnej płycie
+        _page(d, (9*u, 2*u, 21*u, 17*u), fill=BACK)
+        _page(d, (4*u, 7*u, 16*u, 22*u))
+        if name == 'flip_mb':
+            _arrow(d, (4*u, 26.5*u), (26*u, 26.5*u), int(2*u))
+        else:
+            _arrow(d, (25.5*u, 4*u), (25.5*u, 26*u), int(2*u))
+    elif name in ('turn_mb', 'turn_mc'):    # niepełny: przód i tył na jednej płycie
+        if name == 'turn_mb':
+            _page(d, (3*u, 4*u, 27*u, 22*u))
+            d.rectangle((15*u, 4*u, 27*u, 22*u), fill=BACK, outline=DARK, width=SCALE*2)
+            _arrow(d, (5*u, 26.5*u), (25*u, 26.5*u), int(2*u))
+        else:
+            _page(d, (3*u, 3*u, 21*u, 27*u))
+            d.rectangle((3*u, 15*u, 21*u, 27*u), fill=BACK, outline=DARK, width=SCALE*2)
+            _arrow(d, (25.5*u, 5*u), (25.5*u, 25*u), int(2*u))
     elif name == 'economic':
         colors = [(242, 201, 76), (201, 168, 130), (143, 193, 227), (155, 194, 91), (242, 201, 76), (143, 193, 227)]
         for i, c in enumerate(colors):
