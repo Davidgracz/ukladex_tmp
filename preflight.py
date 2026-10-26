@@ -11,7 +11,7 @@ import json
 
 import pymupdf as fitz
 
-from engine import Job, Project, Settings, mm, media_rect, open_sources, scaling_layout, validate, bleed_for, gross_dimensions, validate_job_roles, _duplex_pairs, project_sides, overlapping_uses, plan_sides, crop_offsets, crop_centre, ROLE_AUTO, ROLE_SKIP, economic_report, gutter_notes, FILL_GROSS, slug_notes, strip_notes, orientation_differs, own_marks_notes, reg2_notes, bleeds, max_bleed, bleed_duplex_notes
+from engine import Job, Project, Settings, mm, media_rect, open_sources, scaling_layout, validate, bleed_for, gross_dimensions, validate_job_roles, _duplex_pairs, project_sides, overlapping_uses, plan_sides, crop_offsets, crop_centre, ROLE_AUTO, ROLE_SKIP, economic_report, gutter_notes, FILL_GROSS, slug_notes, strip_notes, orientation_differs, own_marks_notes, reg2_notes, bleeds, max_bleed, bleed_duplex_notes, DUPLEX_LIKE
 
 
 @dataclass(frozen=True)
@@ -155,15 +155,15 @@ def inspect_project(project: Project, *, min_dpi: int = 200,
         # all source PDFs themselves pass geometry/prepress checks.
         try:
             validate_job_roles(project.jobs, docs)
-            if s.mode == 'Dwustronnie':
+            if s.mode in DUPLEX_LIKE:
                 sum(1 for _ in _duplex_pairs(project.jobs, docs))
-            elif s.mode != 'Dwustronnie' and any(
+            elif any(
                 j.role not in (ROLE_AUTO, ROLE_SKIP, economic_report) or any(
                     role not in (ROLE_AUTO, ROLE_SKIP, economic_report) for role in j.page_roles.values()
                 ) for j in project.jobs
             ):
                 findings.append(Finding('BŁĄD', project.jobs[0].path, 0, 'ROLE',
-                    'Przypisano role przód/tył, ale tryb nie jest ustawiony na Dwustronnie. '
+                    'Przypisano role przód/tył, ale tryb nie jest dwustronny (Dwustronnie albo odwracanie przez markę). '
                     'Zmień tryb montażu na Dwustronnie, żeby uniknąć pomyłki przy druku.'))
         except ValueError as exc:
             findings.append(Finding('BŁĄD', project.jobs[0].path, 0, 'ROLE', str(exc)))

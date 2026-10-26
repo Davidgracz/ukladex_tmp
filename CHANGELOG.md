@@ -6,6 +6,10 @@
   grip, print area + grip, plate (width, height, grip, reduce by pt); technical margin („na łapki”) at the gripper
   edge; TrimBox marks the paper on larger pages. Settings in „Ustawienia…”, page size on the status bar,
   stored in the project. H-54.
+- Work-and-turn / work-and-tumble as in the original's sheet kinds: full duplex by side lay (MB, back mirrored
+  horizontally) or gripper edge (MC, back mirrored vertically and rotated 180°), and half-sheet („niepełny”)
+  MB / MC with fronts and backs on one plate (even columns / rows required, equal bleeds on the turn axis,
+  explicit errors otherwise). New „Przez markę” ribbon button with a menu; ribbon width unchanged. H-55.
 
 ## 0.5.8
 
