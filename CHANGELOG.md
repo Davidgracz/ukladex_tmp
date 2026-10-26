@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.5.9
+
+Nowości w ImpoCraft 0.5.9:
+- **Odwracanie przez markę** (wstęga „Montaż akcydensów” → „Rodzaj arkuszy” → „Przez markę ▾”):
+  dwustronny pełny i niepełny przez markę boczną (MB) i czołową (MC). Przy niepełnym przody i tyły są na jednej
+  płycie — liczba kolumn (MB) albo wierszy (MC) musi być parzysta.
+- **Rozmiar wynikowego PDF** („Ustawienia…”): papier, pole zadruku, papier + chwyt, pole zadruku + chwyt albo
+  płyta; margines „na łapki” przy krawędzi chwytaków. Domyślnie bez zmian (PDF = arkusz).
+
+Details (English):
 
 - Output PDF size as in the original's „Rozmiar wynikowego pdfa”: paper (default, unchanged), print area, paper +
   grip, print area + grip, plate (width, height, grip, reduce by pt); technical margin („na łapki”) at the gripper
