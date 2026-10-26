@@ -56,7 +56,7 @@ def _checks(folder: Path) -> list[str]:
             window = app.App()
             break
         except tkinter.TclError as exc:
-            if 'usable' not in str(exc) or attempt == 2:
+            if ('usable' not in str(exc) and "couldn't read file" not in str(exc)) or attempt == 2:
                 raise
             time.sleep(0.5)
     window.update()

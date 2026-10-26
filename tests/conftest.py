@@ -17,7 +17,8 @@ def create_tk(factory=tk.Tk, attempts=3):
         try:
             return factory()
         except tk.TclError as exc:
-            if 'usable' not in str(exc) or attempt == attempts - 1:
+            transient = 'usable' in str(exc) or "couldn't read file" in str(exc)   # np. auto.tcl, tk.tcl
+            if not transient or attempt == attempts - 1:
                 raise
             time.sleep(0.5)
 
