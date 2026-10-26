@@ -205,6 +205,13 @@ class Settings:
     bleed_r: float = 0.0
     bleed_t: float = 0.0
     bleed_b: float = 0.0
+    # Rozmiar wynikowego PDF, chwyt, płyta, margines „na łapki” (press.py, H-54); domyślnie PDF = arkusz.
+    output_size: str = 'Papier (arkusz)'
+    grip: float = 11.0            # chwyt („Punch”, „Grip”) [mm] — pas przy krawędzi chwytaków (dolnej)
+    plate_w: float = 0.0
+    plate_h: float = 0.0
+    plate_reduce_pt: float = 0.0
+    tech_margin: float = 0.0      # margines techniczny „na łapki” przy krawędzi chwytaków [mm]
     # Autowypełnianie arkusza (autofill.py, H-49) — wartości domyślne = dotychczasowe wypełnianie.
     fill_pages: str = 'Wszystkimi'
     fill_corner: str = 'LG'
@@ -431,6 +438,13 @@ def validate(settings: Settings):
             raise ValueError('Różne spady L/P/G/D: włącz „brutto = netto + spady” (brutto wynika wtedy ze spadów).')
         if settings.mode == 'Broszura':
             raise ValueError('Różne spady L/P/G/D nie dotyczą broszury — włącz spady równe („=”).')
+    import press
+    for key in ('grip', 'plate_w', 'plate_h', 'plate_reduce_pt', 'tech_margin'):
+        value = getattr(settings, key)
+        if type(value) not in (int, float) or not isfinite(value) or value < 0:
+            raise ValueError(f'{key}: wymiar nieujemny')
+    if settings.output_size != press.OUT_PAPER or settings.tech_margin:
+        output_layout(settings)
     import naming
     naming.output_parts(settings.output_files)
     import autofill
@@ -483,7 +497,7 @@ def geometry(s: Settings) -> Geometry:
     """
     validate(s)
     available_w = s.sheet_w - 2 * s.margin_x
-    available_h = s.sheet_h - 2 * s.margin_y
+    available_h = s.sheet_h - 2 * s.margin_y - s.tech_margin   # pas „na łapki” przy krawędzi chwytaków (H-54)
     if available_w <= 0 or available_h <= 0:
         raise ValueError('Marginesy są większe niż arkusz')
     candidates = []
@@ -1985,6 +1999,10 @@ def export_pdf(project: Project, output: str, metadata: dict[str, str] | None = 
         out.set_metadata(output_metadata(shown, metadata) if metadata is not None else
                          {'title':f'{APP_NAME} - montaż PDF',
                           'creator':APP_TITLE})
+        sized = apply_output_size(out, project.settings)
+        if sized is not out:
+            out.close()
+            out = sized
         Path(output).parent.mkdir(parents=True, exist_ok=True)
         out.save(output, garbage=3, deflate=True)
         return count
@@ -1992,6 +2010,31 @@ def export_pdf(project: Project, output: str, metadata: dict[str, str] | None = 
         out.close()
         for doc in sources.values():
             doc.close()
+
+
+def output_layout(s: Settings):
+    import press
+    return press.layout(s.output_size, s.sheet_w, s.sheet_h, s.margin_x, s.margin_y, s.tech_margin, s.grip,
+                        s.plate_w, s.plate_h, s.plate_reduce_pt)
+
+
+def apply_output_size(doc: fitz.Document, s: Settings) -> fitz.Document:
+    """Strony arkuszy → strony wynikowe (pole zadruku / papier + chwyt / płyta), wektorowo; TrimBox = papier."""
+    lay = output_layout(s)
+    if lay.unchanged:
+        return doc
+    out = fitz.open()
+    cx0, cy0, cx1, cy1 = lay.clip
+    ox, oy = lay.offset
+    for index in range(len(doc)):
+        page = out.new_page(width=pt(lay.page_w), height=pt(lay.page_h))
+        page.show_pdf_page(fitz.Rect(pt(ox + cx0), pt(oy + cy0), pt(ox + cx1), pt(oy + cy1)), doc, index,
+                           clip=fitz.Rect(pt(cx0), pt(cy0), pt(cx1), pt(cy1)), keep_proportion=False)
+        paper = fitz.Rect(*(pt(v) for v in lay.paper)) & page.rect
+        if paper != page.rect and not paper.is_empty:
+            page.set_trimbox(paper)
+    out.set_metadata(doc.metadata)
+    return out
 
 
 def export_files(project: Project, output: str, metadata: dict[str, str] | None = None,

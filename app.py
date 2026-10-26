@@ -24,9 +24,10 @@ from economic_csv import write_economic_csv
 from crop_editor import CropEditor
 from ui_icons import draw as draw_icon
 from engine import RUN_MODES, RUN_ALL, gutter_notes, slug_notes, strip_notes, FILL_GROSS
-from engine import CROP_NET, CROP_GROSS, CROP_BLEED, crop_output_name, crop_to_file, job_rows, export_files
+from engine import CROP_NET, CROP_GROSS, CROP_BLEED, crop_output_name, crop_to_file, job_rows, export_files, output_layout
 import page_rows
 import autofill
+import press
 
 # Parametry znaczników (okna „definicji” w Imp4) trzymane poza polami wstęgi.
 MARK_PARAMS = ('mark_offset', 'mark_length', 'mark_width_pt',
@@ -371,6 +372,10 @@ class App(tk.Tk):
         # Ustawienia pliku wynikowego (w Imp4: okno Ustawienia) — lokalne, nie trafiają do .psimp.
         self.phrase_var = tk.BooleanVar(value=False)
         self.output_files_var = tk.StringVar(value=OUTPUT_MODES[0])
+        # Rozmiar wynikowego PDF, chwyt, płyta, margines „na łapki” (press.py) — okno „Ustawienia…”.
+        self.press_vars = {'output_size': tk.StringVar(value=press.OUT_PAPER), 'grip': tk.StringVar(value='11'),
+                           'plate_w': tk.StringVar(value='0'), 'plate_h': tk.StringVar(value='0'),
+                           'plate_reduce_pt': tk.StringVar(value='0'), 'tech_margin': tk.StringVar(value='0')}
         self.meta_vars = {key: tk.StringVar() for key in ('author', 'title', 'subject', 'keywords')}
         self.run_mode_var = tk.StringVar(value=RUN_ALL)
 
@@ -1039,6 +1044,9 @@ class App(tk.Tk):
         self.strip_var.set(s.strip_on)
         self.own_var.set(s.own_marks)
         self.output_files_var.set(s.output_files)
+        self.press_vars['output_size'].set(s.output_size)
+        for key in ('grip', 'plate_w', 'plate_h', 'plate_reduce_pt', 'tech_margin'):
+            self.press_vars[key].set(f'{getattr(s, key):g}')
         self.reg2_var.set(s.reg2_on)
         self.frame_var.set(s.frame_on)
         self.white_trim_var.set(s.white_trim)
@@ -1093,6 +1101,16 @@ class App(tk.Tk):
                     self.derived_bleed_var.set(f'ręczne brutto, spad {bx:.2f}')
         except (ValueError, KeyError):
             self.derived_bleed_var.set('wpisz netto i spad')
+
+    def _press_numbers(self):
+        values = {}
+        for key in ('grip', 'plate_w', 'plate_h', 'plate_reduce_pt', 'tech_margin'):
+            text = self.press_vars[key].get().strip().replace(',', '.') or '0'
+            try:
+                values[key] = float(text)
+            except ValueError:
+                raise ValueError(f'Ustawienia → rozmiar PDF: wpisz liczbę ({key})') from None
+        return values
 
     def _side_bleeds(self, bleed):
         """Spady L/P/G/D z pól (przy „=” cztery razy ten sam spad)."""
@@ -1150,6 +1168,8 @@ class App(tk.Tk):
                         strip_on=self.strip_var.get(),
                         own_marks=self.own_var.get(),
                         output_files=self.output_files_var.get(),
+                        output_size=self.press_vars['output_size'].get(),
+                        **self._press_numbers(),
                         reg2_on=self.reg2_var.get(),
                         frame_on=self.frame_var.get(),
                         white_trim=self.white_trim_var.get(), auto_orient=self.auto_orient_var.get(),
@@ -1630,7 +1650,9 @@ class App(tk.Tk):
             self.slots_title.set(f'Tabela użytków ({used})' + ('  •  REJESTRACJA przód + tył' if self.register_overlay and s.mode == 'Dwustronnie' else ''))
             self.side_text.set(f'Arkusz {side.sheet_number} • {"Recto" if side.side == 0 else "Verso"}' if side else 'Brak stron')
             notes = gutter_notes(s) + slug_notes(s) + strip_notes(s)
-            self.stats_text.set(f'{details}   •   arkusz {s.sheet_w:g} × {s.sheet_h:g} mm' + ('  •  MIX NAKŁADÓW' if s.mode == 'Ekonomiczny' else '')
+            lay = output_layout(s)
+            pdf_size = '' if lay.unchanged else f'   •   PDF {lay.page_w:g} × {lay.page_h:g} mm ({s.output_size.lower()})'
+            self.stats_text.set(f'{details}   •   arkusz {s.sheet_w:g} × {s.sheet_h:g} mm' + pdf_size + ('  •  MIX NAKŁADÓW' if s.mode == 'Ekonomiczny' else '')
                                 + ''.join(f'   •   {note}' for note in notes))
         except Exception as e:
             self.stats_text.set(f'Błąd konfiguracji / PDF: {e}')
@@ -2068,7 +2090,33 @@ class App(tk.Tk):
         ttk.Label(body, text='Nazwa pliku nie może zawierać znaków # % & * : < > ? / \\ { } | '
                              'ani być nazwą pliku przetwarzanego.', style='Muted.TLabel',
                   wraplength=440).grid(row=7, column=0, columnspan=2, sticky='w', pady=(10, 0))
-        ttk.Button(body, text='Zamknij', command=dlg.destroy).grid(row=8, column=1, sticky='e', pady=(12, 0))
+        press_box = ttk.LabelFrame(body, text='Rozmiar wynikowego PDF (druk offsetowy)', padding=(8, 4))
+        press_box.grid(row=8, column=0, columnspan=2, sticky='ew', pady=(10, 0))
+        ttk.Label(press_box, text='Strona PDF =').grid(row=0, column=0, sticky='w')
+        ttk.Combobox(press_box, textvariable=self.press_vars['output_size'], values=press.OUTPUT_SIZES,
+                     state='readonly', width=24).grid(row=0, column=1, columnspan=3, sticky='w', pady=2)
+        for row, pairs in enumerate((
+                (('grip', 'Chwyt („Punch”, „Grip”) [mm]:'), ('tech_margin', 'Margines „na łapki” [mm]:')),
+                (('plate_w', 'Płyta: szerokość [mm]:'), ('plate_h', 'wysokość [mm]:')),
+                (('plate_reduce_pt', 'Zmniejsz płytę o [pt]:'),)), start=1):
+            for col, (key, label) in enumerate(pairs):
+                ttk.Label(press_box, text=label).grid(row=row, column=col * 2, sticky='w' if col == 0 else 'e',
+                                                      padx=(0 if col == 0 else 10, 3), pady=1)
+                ttk.Entry(press_box, textvariable=self.press_vars[key], width=8).grid(row=row, column=col * 2 + 1,
+                                                                                     sticky='w')
+        ttk.Label(press_box, text='Krawędź chwytaków = dolna krawędź arkusza. Chwyt to pas pod papierem; na płycie papier '
+                                  'jest wyśrodkowany, a TrimBox strony wskazuje papier. „Na łapki” — pas bez użytków.',
+                  style='Muted.TLabel', wraplength=440).grid(row=4, column=0, columnspan=4, sticky='w', pady=(4, 0))
+
+        def close():
+            try:
+                validate(self._read_fields())
+            except ValueError as exc:
+                messagebox.showerror('Ustawienia', str(exc), parent=dlg)
+                return
+            dlg.destroy()
+            self.schedule_refresh()
+        ttk.Button(body, text='Zamknij', command=close).grid(row=9, column=1, sticky='e', pady=(12, 0))
 
     def _table_menu(self, event):
         row = self.files.identify_row(event.y)
