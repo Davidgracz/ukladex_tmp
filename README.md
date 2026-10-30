@@ -1,3 +1,5 @@
+> **Dokumentacja:** [pełny opis programu](docs/DOKUMENTACJA.md) · [jak przedstawić projekt](docs/PREZENTACJA.md) · [porównanie z Impozycjonerem 4](docs/imp4-wersja-finalna.md)
+
 # ImpoCraft — instalator Windows
 
 Autor: **Dawid Gracz**. ImpoCraft to dalszy rozwój Impozycjonera Studio (te same projekty `.psimp`, te same funkcje).
