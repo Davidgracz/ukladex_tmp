@@ -134,7 +134,7 @@ automatycznych. Następne w planie: (wybierz 1–2 z rozdziału 8).”*
 
 | Pytanie | Odpowiedź |
 |---|---|
-| Czym to się różni od Impozycjonera / innych programów? | Darmowy, lokalny, bez abonamentu; podobny sposób pracy (wstęga, tabela stron, znaczniki), plus rzeczy własne: tryb ekonomiczny, kalibracja tyłu drukarki, ramka użytku, generatory kodów. Na razie bez montażu książek. |
+| Czym to się różni od Impozycjonera / innych programów? | Darmowy, lokalny, bez abonamentu; podobny sposób pracy (wstęga, tabela stron, znaczniki), plus rzeczy własne: tryb ekonomiczny, kalibracja tyłu drukarki, ramka użytku, generatory kodów. Montaż książek: na razie szytych ze składek w druku cyfrowym. |
 | Czy to kopia innego programu? | Nie. Funkcjonalnie wzorowany na znanym programie branżowym, ale cały kod, ikony i teksty są własne; żadne pliki oryginału nie są używane. |
 | Czy zmienia pliki klienta? | Nie. Oryginały są tylko czytane; wynik to nowy plik. Projekt `.psimp` tylko wskazuje na PDF-y. |
 | Czy jakość spada? | Nie — wynik jest wektorowy; zdjęcia zachowują swoje piksele. Preflight ostrzega o niskim DPI. |
@@ -151,7 +151,7 @@ automatycznych. Następne w planie: (wybierz 1–2 z rozdziału 8).”*
 
 ## 8. Co dalej (plany — mów o nich jako o planach, nie o gotowych funkcjach)
 
-- Montaż książek i broszur (świadomie odłożony).
+- Książki: sygnatura grzbietowa (kontrola kolejności składek), oprawa zeszytowa i klejona, arkusze falcowane.
 - Numerowanie na arkuszu, wykrojnik zewnętrzny na podglądzie, kody CODE128 / EAN-128.
 - Kreator podziału arkusza (2×, 3× DL), własne szerokości kolumn, użytek wieloarkuszowy.
 - Podpis cyfrowy instalatora (certyfikat Code Signing).

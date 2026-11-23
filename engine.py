@@ -5,7 +5,7 @@ Units exposed to the operator are millimetres; PyMuPDF operates in points.
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from itertools import islice
 from math import floor, isfinite
 from pathlib import Path
@@ -14,6 +14,7 @@ from typing import Iterator
 import json
 import zipfile
 
+import book as book_rules
 import marks as marks_rules
 from app_info import APP_NAME, TITLE as APP_TITLE
 
@@ -92,7 +93,7 @@ class Settings:
     rotation: str = "Auto"  # Auto, 0, 90
     columns: int = 0          # 0 = automatic
     rows: int = 0
-    mode: str = "Jednostronnie"  # Jednostronnie | Dwustronnie | Broszura | Ekonomiczny
+    mode: str = "Jednostronnie"  # Jednostronnie | Dwustronnie | Broszura | Ekonomiczny | przez markę | książka
     flip: str = "Długa krawędź"
     verso_shift_x: float = 0.0  # mm in physical (unflipped) back PDF coordinates
     verso_shift_y: float = 0.0
@@ -219,6 +220,9 @@ class Settings:
     fill_stack: bool = False
     fill_repeat: int = 1
     fill_even_last: bool = False
+    # Książka szyta ze składek (H-56): najwięcej kartek (po 4 strony) w składce; kolejność kartek na arkuszu.
+    book_leaves: int = 4
+    book_order: str = 'Kolejno (kartka obok kartki)'
 
     def __post_init__(self):
         # JSON zapisuje krotki jako listy — wracamy do niezmiennej postaci (porównania, wartości domyślne).
@@ -232,6 +236,8 @@ FLIP_MC = 'Marka czołowa (MC)'       # pełny: odwracany przez markę czołową
 TURN_MB = 'Niepełny MB'              # niepełny: przód i tył na jednej płycie, work-and-turn
 TURN_MC = 'Niepełny MC'              # niepełny: work-and-tumble
 TURN_MODES = (TURN_MB, TURN_MC)
+# Książka szyta ze składek (druk cyfrowy, kartki niefalcowane, H-56).
+BOOK = 'Książka szyta ze składek'
 DUPLEX_LIKE = ('Dwustronnie',) + TURN_MODES
 
 FILL_GROSS = 'Wypełnij ze spadem'  # grafika pokrywa netto + spad; spad powstaje z grafiki, nadmiar jest docinany
@@ -260,6 +266,7 @@ class Slot:
     rotation: int
     col: int
     row: int
+    spine: str = ''   # książka: krawędź strony przy grzbiecie ('l' / 'r' w układzie strony) — bez spadu (H-56)
 
 
 @dataclass(frozen=True)
@@ -322,7 +329,13 @@ def max_bleed(s: Settings) -> float:
 
 def slot_bleeds(s: Settings, slot) -> tuple[float, float, float, float]:
     """Spady pola na arkuszu (lewy, prawy, górny, dolny) — obrócone razem z użytkiem (H-53)."""
-    return marks_rules.rotate_bleeds(bleeds(s), slot.rotation)
+    l, r, t, b = bleeds(s)
+    spine = getattr(slot, 'spine', '')
+    if spine == 'l':       # strona książki: przy grzbiecie strony stykają się, bez spadu
+        l = 0.0
+    elif spine == 'r':
+        r = 0.0
+    return marks_rules.rotate_bleeds((l, r, t, b), slot.rotation)
 
 
 def _span(a: float, b: float) -> float:
@@ -362,8 +375,15 @@ def validate(settings: Settings):
         raise ValueError('Liczba kolumn/wierszy musi być dodatnia')
     if settings.rotation not in ('Auto', '0', '90', '180', '270'):
         raise ValueError('Nieznana orientacja')
-    if settings.mode not in ('Jednostronnie', 'Dwustronnie', 'Broszura', 'Ekonomiczny') + TURN_MODES:
+    if settings.mode not in ('Jednostronnie', 'Dwustronnie', 'Broszura', 'Ekonomiczny', BOOK) + TURN_MODES:
         raise ValueError('Nieznany tryb montażu')
+    if type(settings.book_leaves) is not int or not 1 <= settings.book_leaves <= book_rules.MAX_LEAVES:
+        raise ValueError(f'Kartek w składce: 1–{book_rules.MAX_LEAVES}')
+    if settings.book_order not in book_rules.ORDERS:
+        raise ValueError(f'Kolejność kartek na arkuszu: {", ".join(book_rules.ORDERS)}')
+    if settings.mode == BOOK and not settings.bleed_equal and settings.bleed_l != settings.bleed_r:
+        raise ValueError('Książka: spad lewy i prawy muszą być równe (strona lewa i prawa książki mają spad '
+                         'zewnętrzny po przeciwnych stronach).')
     if settings.flip not in ('Długa krawędź', 'Krótka krawędź', FLIP_MB, FLIP_MC):
         raise ValueError('Nieznany sposób odwracania arkusza')
     for key in ('verso_shift_x', 'verso_shift_y'):
@@ -504,6 +524,8 @@ def geometry(s: Settings) -> Geometry:
     the edges of the sheet; gap and margins should allow for their length.
     """
     validate(s)
+    if s.mode == BOOK:
+        return _book_geometry(s)
     available_w = s.sheet_w - 2 * s.margin_x
     available_h = s.sheet_h - 2 * s.margin_y - s.tech_margin   # pas „na łapki” przy krawędzi chwytaków (H-54)
     if available_w <= 0 or available_h <= 0:
@@ -544,6 +566,106 @@ def geometry(s: Settings) -> Geometry:
     if not candidates:
         raise ValueError('Użytki nie mieszczą się na arkuszu: zmniejsz wymiary/marginesy lub siatkę')
     return max(candidates, key=lambda g: (g.capacity, -(g.rotation == 90)))
+
+
+def _book_geometry(s: Settings) -> Geometry:
+    """Książka: komórka siatki = rozkładówka (dwie strony stykające się na grzbiecie, spad tylko na zewnątrz).
+
+    Siatka rozkładówek jest liczona jak dla użytku 2 × szerokość strony; każda komórka dzieli się na stronę lewą
+    i prawą (kolejno w `slots`: lewa, prawa, lewa, prawa…). Przy obrocie komórki 90° strona lewa leży na dole.
+    """
+    gross_w = s.gross_w + s.trim_w if s.gross_w > 0 else s.gross_w
+    spread = replace(s, mode='Jednostronnie', trim_w=2 * s.trim_w, gross_w=gross_w)
+    g = geometry(spread)
+    slots = []
+    for cell in g.slots:
+        for page, spine in ((0, 'r'), (1, 'l')):
+            slots.append(_spread_page(cell, s.trim_w, s.trim_h, page, spine))
+    return Geometry(g.cols, g.rows, g.rotation, tuple(slots), len(slots), g.gutter_x, g.gutter_y)
+
+
+def _spread_page(cell: Slot, page_w: float, page_h: float, page: int, spine: str) -> Slot:
+    """Pole strony `page` (0 = lewa, 1 = prawa) w komórce rozkładówki obróconej o cell.rotation (jak użytek, H-53:
+    przy 90° góra strony leży z lewej, lewa krawędź na dole)."""
+    W = 2 * page_w
+    u0, u1 = page * page_w, (page + 1) * page_w
+    a = cell.rotation
+    if a == 0:
+        x0, y0 = u0, 0.0
+    elif a == 90:
+        x0, y0 = 0.0, W - u1
+    elif a == 180:
+        x0, y0 = W - u1, 0.0
+    else:
+        x0, y0 = 0.0, u0
+    w, h = (page_w, page_h) if a in (0, 180) else (page_h, page_w)
+    return Slot(cell.x + x0, cell.y + y0, w, h, a, cell.col, cell.row, spine)
+
+
+def book_back_slot(slot: Slot, s: Settings, spine: str) -> Slot:
+    """Pole na tyle arkusza dokładnie za polem przodu; głowa strony po tej samej stronie co na przodzie.
+
+    Położenie jak w dupleksie (_flip_slot / MB / MC). Kierunek głowy po odwróceniu: przy odbiciu w poziomie
+    zamienia się lewo↔prawo, przy odbiciu w pionie góra↔dół — stąd +180° dla stron obróconych o 90°/270°
+    (poziomo) albo 0°/180° (pionowo). Grzbiet wypada wtedy w tym samym miejscu co na przodzie (H-56)."""
+    if s.flip == FLIP_MB:
+        horizontal = True
+    elif s.flip == FLIP_MC:
+        horizontal = False
+    else:
+        horizontal = (s.flip == 'Długa krawędź') != (s.sheet_w >= s.sheet_h)
+    if horizontal:
+        x, y = s.sheet_w - slot.x - slot.w, slot.y
+        turn = 180 if slot.rotation in (90, 270) else 0
+    else:
+        x, y = slot.x, s.sheet_h - slot.y - slot.h
+        turn = 180 if slot.rotation in (0, 180) else 0
+    return Slot(x, y, slot.w, slot.h, (slot.rotation + turn) % 360, slot.col, slot.row, spine)
+
+
+def _book_pages(jobs: list[Job], documents: dict[str, fitz.Document]) -> tuple[list, int]:
+    """Strony książki: wszystkie pliki z tabeli po kolei (wakaty = puste strony), bez stron „Pomiń”."""
+    validate_job_roles(jobs, documents)
+    copies = {job.copies for job in jobs}
+    if len(copies) != 1:
+        raise ValueError('Książka: ustaw ten sam nakład (liczbę egzemplarzy) przy wszystkich plikach.')
+    refs = []
+    for job in jobs:
+        for i in job_rows(job, len(documents[job.path])):
+            role = ROLE_AUTO if i is None else job.role_for(i)
+            if role not in (ROLE_AUTO, ROLE_SKIP):
+                raise ValueError('Książka: role przód/tył nie dotyczą książki — kolejność stron wynika z pliku. '
+                                 'Zostaw „Normalnie” albo „Pomiń”.')
+            if role != ROLE_SKIP:
+                refs.append(None if i is None else SourcePage(job.path, i))
+    if not refs:
+        raise ValueError('Brak stron książki po pominięciu stron')
+    return refs, copies.pop()
+
+
+def _book_sides(jobs: list[Job], documents: dict[str, fitz.Document], s: Settings) -> Iterator[SheetSide]:
+    """Przód i tył każdego arkusza: rozkładówki kolejnych kartek składek (H-56)."""
+    refs, copies = _book_pages(jobs, documents)
+    g = geometry(s)
+    cells = len(g.slots) // 2
+    for number, folios in enumerate(book_rules.sheets(book_rules.folios(refs, s.book_leaves), cells, copies,
+                                                      s.book_order), start=1):
+        front, back = [], []
+        for c, folio in enumerate(folios):
+            left, right = g.slots[2 * c], g.slots[2 * c + 1]
+            fl, fr = folio.front if folio else (None, None)
+            bl, br = folio.back if folio else (None, None)
+            front += [Placement(fl, left, 0), Placement(fr, right, 0)]
+            # Za prawą stroną przodu (nieparzysta) leży jej odwrocie — lewa strona tyłu; za lewą — prawa.
+            back += [Placement(bl, book_back_slot(right, s, 'r'), 1), Placement(br, book_back_slot(left, s, 'l'), 1)]
+        yield SheetSide(number, 0, tuple(front))
+        yield SheetSide(number, 1, tuple(back))
+
+
+def book_info(jobs: list[Job], documents: dict[str, fitz.Document], s: Settings) -> str:
+    """Opis do podsumowania: liczba stron i podział na składki."""
+    refs, copies = _book_pages(jobs, documents)
+    return f'{len(refs)} str. • {book_rules.summary(len(refs), s.book_leaves)} • {copies} egz.'
 
 
 def validate_job_roles(jobs: list[Job], documents: dict[str, fitz.Document]):
@@ -929,6 +1051,9 @@ def plan_sides(jobs: list[Job], documents: dict[str, fitz.Document], s: Settings
     if s.mode == 'Broszura':
         yield from _booklet_sides(jobs, documents, s)
         return
+    if s.mode == BOOK:
+        yield from _book_sides(jobs, documents, s)
+        return
     if s.mode == 'Ekonomiczny':
         yield from _economic_sides(jobs, documents, s)
         return
@@ -1070,6 +1195,9 @@ def calibrate_verso(side: SheetSide, s: Settings) -> SheetSide:
 
 
 def project_sides(project: Project, sources: dict[str, fitz.Document]):
+    if project.settings.mode == BOOK and project.overrides:
+        raise ValueError('Książka: ręczne zmiany użytków nie są obsługiwane — usuń je („Przywróć automat”) '
+                         'albo zmień tryb.')
     for side in plan_sides(project.jobs, sources, project.settings):
         edited = apply_overrides(side, project, sources)
         yield calibrate_verso(edited, project.settings)
@@ -1078,6 +1206,9 @@ def project_sides(project: Project, sources: dict[str, fitz.Document]):
 def _edit_entry(project: Project, side: SheetSide, index: int) -> dict:
     if not 0 <= index < len(side.placements):
         raise IndexError('Nieprawidłowy numer użytku')
+    if project.settings.mode == BOOK:
+        raise ValueError('Książka: kolejność stron wynika z podziału na składki — ręczna edycja użytków '
+                         'nie jest obsługiwana.')
     return project.overrides.setdefault(_manual_key(side, index), {})
 
 
@@ -1473,6 +1604,8 @@ def render_side(side: SheetSide, sources: dict[str, fitz.Document], s: Settings,
     target = out.new_page(width=pt(s.sheet_w), height=pt(s.sheet_h))
     marks_here = cut_marks_apply(s, target.number + 1, side.sheet_number)
     blockers = _gross_rects(side, s, placed_only=True) if marks_here and s.mark_skip_uses else ()
+    if marks_here and s.mode == BOOK:   # kreski znaczników nie wchodzą na sąsiednią stronę rozkładówki
+        blockers = tuple(blockers) + tuple(gross_rect(s, item.slot) for item in side.placements)
     for item in side.placements:
         if item.source is not None:
             _place_pdf(target, item.source, item.slot, s, sources, offsets)
