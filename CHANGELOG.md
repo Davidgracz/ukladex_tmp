@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.6.0
+
+Nowości w ImpoCraft 0.6.0:
+- **Książka szyta ze składek** (nowa zakładka wstęgi „Książka ze składek”) — druk cyfrowy, kartki niefalcowane:
+  ustawiasz najwięcej kartek w składce, a program sam dzieli książkę równo na składki (np. 100 stron → 4 × 16 +
+  3 × 12), układa rozkładówki na arkuszu (strony stykają się na grzbiecie, bez spadu) i liczy tył tak, żeby każda
+  strona leżała za swoją parą. Kartki na arkuszu: kolejno, w stosie albo powielone.
+- Przed nakładem wydrukuj i złóż jedną składkę próbną.
+
+Details (English):
 
 - Sewn-signature books for digital printing (unfolded leaves), new ribbon tab „Książka ze składek”: maximum leaves
   per signature, pages split evenly into signatures (no thin last signature, blanks only at the end), spreads on
