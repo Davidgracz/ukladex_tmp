@@ -64,6 +64,14 @@ def draw(name, size=30):
             _page(d, (3*u, 3*u, 21*u, 27*u))
             d.rectangle((3*u, 15*u, 21*u, 27*u), fill=BACK, outline=DARK, width=SCALE*2)
             _arrow(d, (25.5*u, 5*u), (25.5*u, 25*u), int(2*u))
+    elif name == 'book':    # rozkładówka składki: dwie strony, ścieg przez grzbiet
+        _page(d, (3*u, 5*u, 15*u, 25*u))
+        _page(d, (15*u, 5*u, 27*u, 25*u), fill=BACK)
+        for k in (8, 12.5, 17, 21.5):
+            d.line([(15*u, k*u), (15*u, (k + 2.5)*u)], fill=INK, width=int(2*u))
+        for k in (9, 12, 15):
+            d.line([(6*u, k*u), (12*u, k*u)], fill=DARK, width=SCALE)
+            d.line([(18*u, k*u), (24*u, k*u)], fill=DARK, width=SCALE)
     elif name == 'economic':
         colors = [(242, 201, 76), (201, 168, 130), (143, 193, 227), (155, 194, 91), (242, 201, 76), (143, 193, 227)]
         for i, c in enumerate(colors):

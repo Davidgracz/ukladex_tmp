@@ -23,7 +23,8 @@ from duplex_test_sheet import create_duplex_test_pdf, correction_from_front_erro
 from economic_csv import write_economic_csv
 from crop_editor import CropEditor
 from ui_icons import draw as draw_icon
-from engine import FLIP_MB, FLIP_MC, TURN_MB, TURN_MC, TURN_MODES
+from engine import FLIP_MB, FLIP_MC, TURN_MB, TURN_MC, TURN_MODES, BOOK, book_info
+import book as book_rules
 from engine import RUN_MODES, RUN_ALL, gutter_notes, slug_notes, strip_notes, FILL_GROSS
 from engine import CROP_NET, CROP_GROSS, CROP_BLEED, crop_output_name, crop_to_file, job_rows, export_files, output_layout
 import page_rows
@@ -354,6 +355,9 @@ class App(tk.Tk):
         self.entries = {}
         self.mode_var = tk.StringVar(value='Jednostronnie')
         self.flip_var = tk.StringVar(value='Długa krawędź')
+        self.book_leaves_var = tk.StringVar(value='4')                   # książka: kartek w składce (H-56)
+        self.book_order_var = tk.StringVar(value=book_rules.ORDER_SEQUENTIAL)
+        self.book_text = tk.StringVar(value='')
         self.sheet_kind = tk.StringVar(value='Jednostronnie')
         self.symbolic_var = tk.BooleanVar(value=False)
         self.marks_var = tk.BooleanVar(value=True)
@@ -425,6 +429,7 @@ class App(tk.Tk):
         self._ribbon_jobwork(ribbon)
         self._ribbon_crop(ribbon)
         self._ribbon_duplex(ribbon)
+        self._ribbon_book(ribbon)
 
         body = ttk.Frame(self.imposition_tab, padding=(6, 6, 6, 0))
         body.pack(fill='both', expand=True)
@@ -604,6 +609,57 @@ class App(tk.Tk):
         ttk.Label(g, text='Rodzaj arkusza „Dwustronnie” wybierz w zakładce Montaż akcydensów.\n'
                   'Drukuj 100% skali; offset przesuwa grafikę i linie cięcia verso, nie arkusz.',
                   style='Ribbon.TLabel', justify='left').pack(anchor='w')
+
+    def _ribbon_book(self, ribbon):
+        """Książka szyta ze składek — druk cyfrowy, kartki niefalcowane (H-56)."""
+        tab = ttk.Frame(ribbon, style='Ribbon.TFrame')
+        ribbon.add(tab, text='Książka ze składek')
+        g = self._group(tab, 'Rodzaj montażu')
+        ttk.Radiobutton(g, text='Książka szyta\nze składek', image=self._icon('book'), compound='top', value=BOOK,
+                        variable=self.sheet_kind, style='Kind.Toolbutton',
+                        command=self._apply_sheet_kind).pack(side='left', fill='y', padx=1)
+        g = self._group(tab, 'Składka')
+        ttk.Label(g, text='Kartek w składce (najwięcej):', style='Ribbon.TLabel').grid(row=0, column=0, sticky='e')
+        spin = ttk.Spinbox(g, textvariable=self.book_leaves_var, from_=1, to=book_rules.MAX_LEAVES, increment=1,
+                           width=4, command=self.schedule_refresh)
+        spin.grid(row=0, column=1, sticky='w', padx=(3, 0))
+        spin.bind('<KeyRelease>', lambda e: self.schedule_refresh())
+        self.book_pages_text = tk.StringVar(value='')
+        ttk.Label(g, textvariable=self.book_pages_text, style='Ribbon.TLabel').grid(row=0, column=2, sticky='w', padx=4)
+        ttk.Label(g, text='kartka = 4 strony; składki wyrównane,\nbez cienkiej składki na końcu',
+                  style='Caption.TLabel', justify='left').grid(row=1, column=0, columnspan=3, sticky='w')
+        self.book_leaves_var.trace_add('write', lambda *_: self._book_pages_label())
+        self._book_pages_label()
+        g = self._group(tab, 'Kartki na arkuszu')
+        ttk.Combobox(g, textvariable=self.book_order_var, values=book_rules.ORDERS, state='readonly',
+                     width=27).grid(row=0, column=0, sticky='w')
+        ttk.Label(g, text='Odwracanie:', style='Ribbon.TLabel').grid(row=1, column=0, sticky='w', pady=(3, 0))
+        ttk.Combobox(g, textvariable=self.flip_var, values=('Długa krawędź', 'Krótka krawędź', FLIP_MB, FLIP_MC),
+                     state='readonly', width=27).grid(row=2, column=0, sticky='w')
+        self.book_order_var.trace_add('write', lambda *_: self.schedule_refresh())
+        g = self._group(tab, 'Podział na składki')
+        ttk.Label(g, textvariable=self.book_text, style='Ribbon.TLabel', justify='left',
+                  wraplength=360).pack(anchor='w')
+        ttk.Label(g, text='Użytek netto = format strony książki (zakładka Montaż akcydensów).\n'
+                  'Na arkuszu: rozkładówki, strony stykają się na grzbiecie (bez spadu).',
+                  style='Caption.TLabel', justify='left').pack(anchor='w', pady=(4, 0))
+
+    def _book_pages_label(self):
+        try:
+            self.book_pages_text.set(f'= do {4 * int(self.book_leaves_var.get())} stron')
+        except ValueError:
+            self.book_pages_text.set('')
+
+    def _book_summary(self, s):
+        """Opis podziału książki na składki (albo powód, dla którego nie da się go policzyć)."""
+        sources = open_sources(self.project.jobs)
+        try:
+            return book_info(self.project.jobs, sources, s)
+        except ValueError as exc:
+            return str(exc)
+        finally:
+            for doc in sources.values():
+                doc.close()
 
     # --- Podgląd arkusza ---------------------------------------------------------------------------
 
@@ -1073,6 +1129,8 @@ class App(tk.Tk):
         self.trim_preset_var.set(preset)
         self.rot_var.set(s.rotation)
         self.flip_var.set(s.flip)
+        self.book_leaves_var.set(str(s.book_leaves))
+        self.book_order_var.set(s.book_order)
         self.marks_var.set(s.crop_marks)
         self.labels_var.set(s.show_page_labels)
         self.gutter_var.set(s.gutter_on)
@@ -1198,6 +1256,11 @@ class App(tk.Tk):
             data['bleed']=(data['gross_w']-data['trim_w'])/2
         data['auto_source']=self.auto_source_var.get()
         data['auto_gross']=self.auto_gross_var.get()
+        try:
+            data['book_leaves'] = int(self.book_leaves_var.get().strip())
+        except ValueError:
+            raise ValueError(f'Kartek w składce: liczba całkowita 1–{book_rules.MAX_LEAVES}') from None
+        data['book_order'] = self.book_order_var.get()
         return Settings(**data,mode=self.mode_var.get(), rotation=self.rot_var.get(),
                         scale_mode=self.scale_var.get(),
                         flip=self.flip_var.get(),crop_marks=self.marks_var.get(),
@@ -1583,7 +1646,7 @@ class App(tk.Tk):
         more = '+' if len(sides) >= self.MAX_LISTED_SIDES else ''
         gw, gh = gross_dimensions(s)
         self.summary_vars['pages'].set(f'{filled}{more}')
-        self.summary_vars['sheets'].set(f'{sheets}{more}' + ('  (dwustronnie)' if s.mode == 'Dwustronnie' else '  (przód i tył na jednej płycie)' if s.mode in TURN_MODES else ''))
+        self.summary_vars['sheets'].set(f'{sheets}{more}' + ('  (dwustronnie)' if s.mode in ('Dwustronnie', BOOK) else '  (przód i tył na jednej płycie)' if s.mode in TURN_MODES else ''))
         self.summary_vars['capacity'].set(str(capacity) if capacity else '4 strony (2-up)')
         self.summary_vars['empty'].set(f'{empty}{more}')
         spad = (f'spad {bleed_for(s):g}' if s.bleed_equal else
@@ -1649,13 +1712,19 @@ class App(tk.Tk):
                 details=f'{g.cols} × {g.rows} = {g.capacity} użytków / strona  •  obrót {g.rotation}°'
                 if s.mode in TURN_MODES:
                     details += f'  •  {g.capacity // 2} par przód/tył na płycie'
+                if s.mode == BOOK:
+                    n = g.capacity // 2
+                    word = ('rozkładówka' if n == 1 else 'rozkładówki' if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14
+                            else 'rozkładówek')
+                    details = f'{g.cols} × {g.rows} = {n} {word} ({g.capacity} str.) / strona  •  obrót {g.rotation}°'
             else:
                 details='Broszura zeszytowa 2-up (4 strony na arkusz)'
             sides = self._collect_sides()
             self.current_sides = sides
             if self.side_index >= len(sides):
                 self.side_index = 0
-            duplex = s.mode in ('Dwustronnie', 'Broszura')
+            duplex = s.mode in ('Dwustronnie', 'Broszura', BOOK)
+            self.book_text.set(self._book_summary(s) if s.mode == BOOK else 'Wybierz „Książka szyta ze składek”.')
             self._rebuild_sheet_strip(sides, duplex)
             self._update_summary(s, sides, capacity)
             side = sides[self.side_index] if sides else None
@@ -1664,7 +1733,7 @@ class App(tk.Tk):
                                          marks=s.crop_marks, mode=self.preview_label_mode.get())
             else:
                 image, side = preview(self.project,pixels=1300,index=self.side_index)
-            if self.register_overlay and s.mode == 'Dwustronnie' and side is not None:
+            if self.register_overlay and s.mode in ('Dwustronnie', BOOK) and side is not None:
                 from PIL import Image
                 matching = self.side_index + 1 if side.side == 0 else self.side_index - 1
                 if self.symbolic_var.get():
@@ -1688,7 +1757,7 @@ class App(tk.Tk):
             self.canvas.delete('all')
             self._display_image()
             used = sum(1 for p in side.placements if p.source is not None) if side else 0
-            self.slots_title.set(f'Tabela użytków ({used})' + ('  •  REJESTRACJA przód + tył' if self.register_overlay and s.mode == 'Dwustronnie' else ''))
+            self.slots_title.set(f'Tabela użytków ({used})' + ('  •  REJESTRACJA przód + tył' if self.register_overlay and s.mode in ('Dwustronnie', BOOK) else ''))
             self.side_text.set(f'Arkusz {side.sheet_number} • {"Recto" if side.side == 0 else "Verso"}' if side else 'Brak stron')
             notes = gutter_notes(s) + slug_notes(s) + strip_notes(s)
             lay = output_layout(s)
@@ -1801,6 +1870,10 @@ class App(tk.Tk):
 
     def edit_sheet(self):
         """Open visual drag/drop sheet editor, with per-use rigid transforms."""
+        if self.mode_var.get() == BOOK:
+            messagebox.showinfo('Edycja użytków', 'W książce kolejność stron wynika z podziału na składki — '
+                                'ręczna edycja użytków nie jest dostępna.', parent=self)
+            return
         if not self.project.jobs:
             messagebox.showwarning('Brak plików', 'Dodaj pliki PDF przed edycją arkusza.')
             return

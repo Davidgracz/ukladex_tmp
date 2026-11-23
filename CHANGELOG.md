@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Sewn-signature books for digital printing (unfolded leaves), new ribbon tab „Książka ze składek”: maximum leaves
+  per signature, pages split evenly into signatures (no thin last signature, blanks only at the end), spreads on
+  the sheet with no bleed at the spine, back side placed so every verso lies behind its recto with the same head
+  and spine position (long/short edge, MB, MC), sheet orders sequential / cut-and-stack / repeated. Unsupported
+  options (roles, autofill, manual edits, L ≠ R bleed) raise explicit errors. New module `book.py`. H-56, OQ-19.
+
 ## 0.5.9
 
 Nowości w ImpoCraft 0.5.9:

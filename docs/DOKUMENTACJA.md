@@ -15,6 +15,7 @@ i wydawanie nowych wersji. Szczegółowe porównanie z Impozycjonerem 4 (funkcja
 5. [Pierwsza impozycja krok po kroku](#5-pierwsza-impozycja-krok-po-kroku)
 6. [Montaż akcydensów — wstęga](#6-montaż-akcydensów--wstęga)
 7. [Rodzaje arkuszy: jedno-, dwustronnie, przez markę, ekonomiczny](#7-rodzaje-arkuszy)
+   - [Książka szyta ze składek](#książka-szyta-ze-składek)
 8. [Kadrowanie PDF i dopasowanie stron](#8-kadrowanie-pdf-i-dopasowanie-stron)
 9. [Druk cyfrowy — recto/verso i kalibracja](#9-druk-cyfrowy--rectoverso-i-kalibracja)
 10. [Tabela stron](#10-tabela-stron)
@@ -39,7 +40,7 @@ ulotek, naklejek, kart itp. Program bierze pliki PDF od klienta, rozmieszcza je 
 cięcia i pasowania i zapisuje gotowy, **wektorowy** PDF do druku cyfrowego albo offsetowego.
 
 - **Wzorowany funkcjonalnie na Impozycjonerze 4**, ale to niezależna implementacja: własny kod, własne ikony,
-  bez plików, grafik i tekstów oryginału. Zakres: **akcydensy** (bez montażu książek i broszur — świadoma decyzja).
+  bez plików, grafik i tekstów oryginału. Zakres: **akcydensy** oraz **książki szyte ze składek** w druku cyfrowym (od 0.6.0).
 - **Wektorowo:** strony PDF są wstawiane jako wektory — tekst i grafika nie są rasteryzowane, jakość się nie zmienia.
 - **Oryginały nie są zmieniane.** Program czyta PDF-y i zapisuje nowe pliki; projekt `.psimp` tylko wskazuje na PDF-y.
 - **Bez abonamentu, lokalnie:** nic nie jest wysyłane do sieci poza sprawdzeniem aktualizacji na GitHubie.
@@ -201,6 +202,30 @@ Kilka różnych wzorów o różnych nakładach (np. A = 700, B = 300) rozkładan
 zamówienia — minimalna liczba arkuszy, bez nadprodukcji. Przycisk **Plan ekonomiczny** pokazuje rozkład arkuszy
 i pozwala zapisać raport CSV (obok wyniku powstaje `…_plan_ekonomiczny.csv`). Każdy arkusz w pliku jest drukowany
 **raz** — nie ustawiaj kopii w drukarce. Tylko jednostronnie, jeden format użytku; limit 10 000 arkuszy na eksport.
+
+### Książka szyta ze składek
+Zakładka wstęgi **Książka ze składek** — montaż książki szytej nićmi ze składek, druk cyfrowy (kartki
+niefalcowane):
+
+- **Kartka** = 4 strony: rozkładówka na przodzie i rozkładówka na tyle arkusza. Kartki składki składa się na pół
+  i wkłada jedna w drugą; składkę szyje się przez środek (grzbiet).
+- **Kartek w składce (najwięcej)** — np. 4 kartki = składka 16-stronicowa. Program dzieli książkę **równo**:
+  100 stron przy limicie 4 kartek → 7 składek: 4 × 16 + 3 × 12 stron (bez cienkiej składki na końcu). Brakujące
+  strony do wielokrotności 4 są puste na końcu książki. Podział widać w grupie „Podział na składki”.
+- **Użytek netto** (zakładka Montaż akcydensów) = format strony książki, np. A5 148 × 210. Na arkuszu program
+  układa **rozkładówki**: strony stykają się na grzbiecie bez spadu, spad tylko na zewnątrz. Obrót Auto dobiera
+  ułożenie (A5 na SRA3: 2 rozkładówki obrócone o 90°).
+- **Kartki na arkuszu:** **Kolejno** (kartki książki po kolei, egzemplarz za egzemplarzem), **W stosie** (po
+  cięciu stos z pola 1, pod nim z pola 2… daje kartki po kolei), **Powielone** (ta sama kartka w każdym polu —
+  każdy stos po cięciu to cała książka; ostatnia seria bez nadprodukcji).
+- **Odwracanie:** długa / krótka krawędź (jak w sterowniku drukarki) albo przez markę (offset). Tył jest liczony
+  tak, żeby każda strona parzysta leżała dokładnie za swoją nieparzystą, z głową po tej samej stronie i grzbietem
+  w tym samym miejscu.
+- **Nakład** = liczba egzemplarzy (taki sam przy wszystkich plikach). Książka może składać się z kilku plików
+  (np. rozdziałów) — liczą się po kolei, wakaty to puste strony, „Pomiń” wyłącza stronę.
+- Nie działają tu (jawny komunikat): role przód/tył, autowypełnianie, ręczna edycja użytków, różny spad lewy
+  i prawy. Znaczniki cięcia nie wchodzą na sąsiednią stronę rozkładówki; na końcach grzbietu zostają krótkie
+  kreski — miejsce złamania kartki.
 
 ---
 
@@ -394,7 +419,9 @@ Przed produkcją zrób próbne cięcie na ploterze.
 - Program **nie tworzy spadów z niczego** i nie rozciąga grafiki bez Twojej decyzji (tryby skalowania są jawne).
 - Preflight jest uproszczony: nie zastępuje kontroli separacji, nadruku (overprint), ICC i PDF/X.
 - Jeden format użytku na arkuszu (wspólne netto/brutto dla całego montażu).
-- Brak montażu książek i broszur (stare projekty broszur nadal się otwierają), brak: creep, falcowania, wykrojnika
+- Książki: tylko szyte ze składek w druku cyfrowym — brak oprawy zeszytowej i klejonej, arkuszy falcowanych
+  (offset), sygnatury grzbietowej i redukcji wysunięcia stron (stare projekty broszur nadal się otwierają);
+  brak też: creep, falcowania, wykrojnika
   zewnętrznego, CODE128/EAN-128, kreatora podziału arkusza. Pełna lista — `imp4-wersja-finalna.md`.
 - Przy bardzo dużych pracach eksport może na chwilę zablokować okno.
 
@@ -413,7 +440,8 @@ Podgląd i eksport używają **tego samego** planu arkuszy i renderu — to, co 
 
 | Plik | Zawartość |
 |---|---|
-| `engine.py` | Serce programu: `Settings` (wszystkie ustawienia), `Job` (plik + nakład + role + kadr), `Project`; `validate`, `geometry` (siatka, obrót, pojemność), `plan_sides` (który PDF na którym polu którego arkusza — jedno-, dwustronnie, przez markę, ekonomiczny, broszura), render arkusza, `export_pdf`, `preview`, zapis/odczyt `.psimp`. |
+| `engine.py` | Serce programu: `Settings` (wszystkie ustawienia), `Job` (plik + nakład + role + kadr), `Project`; `validate`, `geometry` (siatka, obrót, pojemność), `plan_sides` (który PDF na którym polu którego arkusza — jedno-, dwustronnie, przez markę, ekonomiczny, broszura, książka), render arkusza, `export_pdf`, `preview`, zapis/odczyt `.psimp`. |
+| `book.py` | Książka ze składek: podział na składki, kolejność stron na kartkach, kartki na arkuszach. |
 | `marks.py` | Geometria znaczników (linie cięcia, pasery, wycinka, opis, pasek, własne…). |
 | `press.py` | Rozmiar wynikowego PDF (papier / pole zadruku / chwyt / płyta). |
 | `autofill.py` | Kolejność wypełniania pól. |
